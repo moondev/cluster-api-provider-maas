@@ -19,11 +19,12 @@ package main
 import (
 	"context"
 	"flag"
-	"k8s.io/klog/v2/textlogger"
 	"math/rand"
 	"os"
-	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"time"
+
+	"k8s.io/klog/v2/textlogger"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
 	"sigs.k8s.io/cluster-api/controllers/remote"
 
@@ -169,6 +170,10 @@ func main() {
 	}
 	if err = (&infrav1beta1.MaasMachineTemplate{}).SetupWebhookWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create webhook", "webhook", "MaasMachineTemplate")
+		os.Exit(1)
+	}
+	if err = (&infrav1beta1.MaasClusterTemplate{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "MaasClusterTemplate")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

@@ -1,3 +1,211 @@
+```yaml
+providers:
+- name: maas
+  type: InfrastructureProvider
+  url: https://github.com/moondev/cluster-api-provider-maas/releases/latest/infrastructure-components.yaml
+
+```
+init
+```shell
+CLUSTER_TOPOLOGY=true MAAS_API_KEY=key MAAS_ENDPOINT=http://:5240/MAAS clusterctl init --infrastructure maas --addon helm -v=9
+kubectl set image deployments.apps -n capmaas-system capmaas-controller-manager manager=docker.io/chadmoon/cluster-api-provider-maas-controller:v0.6.1-clusterclass
+
+```
+
+clusterclass
+```yaml
+
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasClusterTemplate
+metadata:
+  name: maas-cluster-template
+  namespace: default
+spec:
+  template:
+    spec:
+      dnsDomain: maas
+
+
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: mgmt-control-plane
+  namespace: default
+spec:
+  template:
+    spec:
+      image: custom/u-2204-0-k-1316-0
+      minCPU: 1
+      minMemory: 2192
+      resourcePool: default
+      tags: []
+
+
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: KubeadmControlPlaneTemplate
+metadata:
+  name: maas-control-plane-template
+  namespace: default
+spec:
+  template:
+    spec:
+      kubeadmConfigSpec:
+        clusterConfiguration:
+          apiServer:
+            extraArgs:
+              anonymous-auth: "true"
+              authorization-mode: RBAC,Node
+              default-not-ready-toleration-seconds: "60"
+              default-unreachable-toleration-seconds: "60"
+              disable-admission-plugins: AlwaysAdmit
+              enable-admission-plugins: AlwaysPullImages,NamespaceLifecycle,ServiceAccount,NodeRestriction
+            timeoutForControlPlane: 10m0s
+          controllerManager:
+            extraArgs:
+              feature-gates: RotateKubeletServerCertificate=true
+              terminated-pod-gc-threshold: "25"
+              use-service-account-credentials: "true"
+          dns: {}
+          etcd: {}
+          networking: {}
+          scheduler:
+            extraArgs: null
+        initConfiguration:
+          localAPIEndpoint:
+            advertiseAddress: ""
+            bindPort: 0
+          nodeRegistration:
+            kubeletExtraArgs:
+              event-qps: "0"
+              feature-gates: RotateKubeletServerCertificate=true
+              read-only-port: "0"
+            taints: []
+            name: '{{ v1.local_hostname }}'
+        joinConfiguration:
+          controlPlane:
+            localAPIEndpoint:
+              advertiseAddress: ""
+              bindPort: 0
+          discovery: {}
+          nodeRegistration:
+            kubeletExtraArgs:
+              event-qps: "0"
+              feature-gates: RotateKubeletServerCertificate=true
+              read-only-port: "0"
+            name: '{{ v1.local_hostname }}'
+            taints: []
+        preKubeadmCommands:
+        - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
+          sleep 1; done
+        - sed -ri '/\sswap\s/s/^#?/#/' /etc/fstab
+        - swapoff -a
+        useExperimentalRetryJoin: true
+
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: mgmt-md-0
+  namespace: default
+spec:
+  template:
+    spec:
+      image: custom/u-2204-0-k-1316-0
+      minCPU: 1
+      minMemory: 2192
+      resourcePool: default
+      tags: []
+
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: KubeadmConfigTemplate
+metadata:
+  name: mgmt-md-0
+  namespace: default
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+            event-qps: "0"
+            feature-gates: RotateKubeletServerCertificate=true
+            read-only-port: "0"
+          name: '{{ v1.local_hostname }}'
+      preKubeadmCommands:
+      - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
+        sleep 1; done
+      - sed -ri '/\sswap\s/s/^#?/#/' /etc/fstab
+      - swapoff -a
+      useExperimentalRetryJoin: true
+
+
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: ClusterClass
+metadata:
+  name: maas-clusterclass
+spec:
+  infrastructure:
+    ref:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      kind: MaasClusterTemplate
+      name: maas-cluster-template
+      namespace: default
+  controlPlane:
+    ref:
+      apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+      kind: KubeadmControlPlaneTemplate
+      name: maas-control-plane-template
+      namespace: default
+    machineInfrastructure:
+      ref:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: MaasMachineTemplate
+        name: mgmt-control-plane
+  workers:
+    machineDeployments:
+      - class: default-worker
+        template:
+          bootstrap:
+            ref:
+              apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+              kind: KubeadmConfigTemplate
+              name: mgmt-md-0
+          infrastructure:
+            ref:
+              apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+              kind: MaasMachineTemplate
+              name: mgmt-md-0
+
+
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: my-cluster
+  labels:
+    cluster.x-k8s.io/cluster-name: my-cluster
+spec:
+  topology:
+    class: maas-clusterclass
+    version: v1.31.6
+    controlPlane:
+      metadata: {}
+      replicas: 1
+    workers:
+      machineDeployments:
+        - class: default-worker
+          name: md-0
+          replicas: 2
+    # variables: {} 
+
+```
+
+---
 # Cluster-API-Provider-MAAS
 Cluster API Provider for Canonical Metal-As-A-Service [maas.io](https://maas.io/)
 
@@ -59,6 +267,20 @@ clusterctl init --infrastructure maas:v0.5.0
 ```
 clusterctl generate cluster t-cluster --infrastructure=maas:v0.5.0 --kubernetes-version v1.26.4 --control-plane-machine-count=1 --worker-machine-count=3 | kubectl apply -f -
 ```
+
+## ClusterClass Support (Managed Topology)
+
+This provider supports ClusterClass and managed topology, enabling declarative, reusable cluster definitions.
+
+- See `templates/clusterclass-maas.yaml` for a full example of ClusterClass, Cluster, and template resources for MAAS.
+- To use ClusterClass:
+  1. Apply the ClusterClass, MaasClusterTemplate, MaasMachineTemplate, and related resources from the example.
+  2. Create a Cluster with a `spec.topology` referencing your ClusterClass.
+  3. Customize the templates and variables as needed for your environment.
+
+**Note:**
+- The provider's webhooks validate required fields for managed topology (e.g., `spec.dnsDomain` for MaasCluster, and `image`, `minCPU`, `minMemory` for MaasMachineTemplate).
+- All ClusterClass-managed resources must have the label `topology.cluster.x-k8s.io/owned` set by Cluster API.
 
 ## Developer Guide
 - Create kind cluster
