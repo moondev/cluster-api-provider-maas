@@ -1,7 +1,19 @@
+# Creates a cluster with ephemeral (in-memory) deployment for both control-plane and worker nodes
+# This template demonstrates how to deploy machines in memory instead of disk
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasCluster
+metadata:
+  name: "${CLUSTER_NAME}"
+spec:
+  dnsDomain: ${MAAS_DNS_DOMAIN}
+
+---
+
 apiVersion: cluster.x-k8s.io/v1beta1
 kind: Cluster
 metadata:
   name: "${CLUSTER_NAME}"
+
   namespace: "${NAMESPACE}"
 spec:
   clusterNetwork:
@@ -12,6 +24,14 @@ spec:
     services:
       cidrBlocks:
       - 10.96.0.0/12
+spec:
+  clusterNetwork:
+    services:
+      cidrBlocks: ["10.96.0.0/12"]
+    pods:
+      cidrBlocks: ["192.168.0.0/16"]
+    serviceDomain: "cluster.local"
+
   controlPlaneRef:
     apiVersion: controlplane.cluster.x-k8s.io/v1beta1
     kind: KubeadmControlPlane
@@ -20,6 +40,7 @@ spec:
     apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
     kind: MaasCluster
     name: "${CLUSTER_NAME}"
+
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: MaasCluster
@@ -28,6 +49,24 @@ metadata:
   namespace: "${NAMESPACE}"
 spec:
   dnsDomain: "${DNS_DOMAIN}"
+
+---
+# Control Plane Machine Template with Ephemeral Deployment
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: "${CLUSTER_NAME}-control-plane"
+spec:
+  template:
+    spec:
+      minCPU: ${CONTROL_PLANE_MACHINE_MINCPU}
+      minMemory: ${CONTROL_PLANE_MACHINE_MINMEMORY}
+      image: ${CONTROL_PLANE_MACHINE_IMAGE}
+      resourcePool: ${CONTROL_PLANE_MACHINE_RESOURCEPOOL}
+      tags: [ ${ CONTROL_PLANE_MACHINE_TAG } ]
+      # Enable ephemeral deployment - machines will deploy in memory instead of disk
+      ephemeral: true
+
 ---
 apiVersion: controlplane.cluster.x-k8s.io/v1beta1
 kind: KubeadmControlPlane
@@ -45,6 +84,7 @@ spec:
   kubeadmConfigSpec:
     clusterConfiguration:
       apiServer:
+
         certSANs:
         - localhost
         - 127.0.0.1
@@ -78,6 +118,67 @@ spec:
       image: ${CONTROL_PLANE_MACHINE_IMAGE}
       resourcePool: ${CONTROL_PLANE_MACHINE_RESOURCEPOOL}
       tags: [ ${CONTROL_PLANE_MACHINE_TAG} ]
+        extraArgs:
+          anonymous-auth: "true"
+          authorization-mode: RBAC,Node
+          default-not-ready-toleration-seconds: "60"
+          default-unreachable-toleration-seconds: "60"
+          disable-admission-plugins: AlwaysAdmit
+          enable-admission-plugins: AlwaysPullImages,NamespaceLifecycle,ServiceAccount,NodeRestriction
+        timeoutForControlPlane: 10m0s
+      controllerManager:
+        extraArgs:
+          feature-gates: RotateKubeletServerCertificate=true
+          terminated-pod-gc-threshold: "25"
+          use-service-account-credentials: "true"
+      dns: {}
+      etcd: {}
+      networking: {}
+      scheduler:
+        extraArgs:
+    initConfiguration:
+      localAPIEndpoint:
+        advertiseAddress: ""
+        bindPort: 0
+      nodeRegistration:
+        kubeletExtraArgs:
+          event-qps: "0"
+          feature-gates: RotateKubeletServerCertificate=true
+          read-only-port: "0"
+        name: '{{ v1.local_hostname }}'
+    joinConfiguration:
+      controlPlane:
+        localAPIEndpoint:
+          advertiseAddress: ""
+          bindPort: 0
+      discovery: {}
+      nodeRegistration:
+        kubeletExtraArgs:
+          event-qps: "0"
+          feature-gates: RotateKubeletServerCertificate=true
+          read-only-port: "0"
+        name: '{{ v1.local_hostname }}'
+    preKubeadmCommands:
+      - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
+        sleep 1; done
+      - sed -ri '/\sswap\s/s/^#?/#/' /etc/fstab
+      - swapoff -a
+    useExperimentalRetryJoin: true
+---
+# Worker Machine Template with Ephemeral Deployment
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: "${CLUSTER_NAME}-md-0"
+spec:
+  template:
+    spec:
+      minCPU: ${WORKER_MACHINE_MINCPU}
+      minMemory: ${WORKER_MACHINE_MINMEMORY}
+      image: ${WORKER_MACHINE_IMAGE}
+      resourcePool: ${WORKER_MACHINE_RESOURCEPOOL}
+      tags: [ ${ WORKER_MACHINE_TAG } ]
+
       # Enable ephemeral deployment - machines will deploy in memory instead of disk
       ephemeral: true
 ---
@@ -85,6 +186,7 @@ apiVersion: cluster.x-k8s.io/v1beta1
 kind: MachineDeployment
 metadata:
   name: "${CLUSTER_NAME}-md-0"
+
   namespace: "${NAMESPACE}"
 spec:
   clusterName: "${CLUSTER_NAME}"
@@ -94,6 +196,14 @@ spec:
   template:
     metadata:
       labels: {}
+spec:
+  clusterName: "${CLUSTER_NAME}"
+  replicas: 1
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: "${CLUSTER_NAME}"
+  template:
+
     spec:
       clusterName: "${CLUSTER_NAME}"
       version: "${KUBERNETES_VERSION}"
@@ -111,12 +221,14 @@ apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
 kind: KubeadmConfigTemplate
 metadata:
   name: "${CLUSTER_NAME}-md-0"
+
   namespace: "${NAMESPACE}"
 spec:
   template:
     spec:
       joinConfiguration:
         nodeRegistration:
+
           criSocket: /var/run/containerd/containerd.sock
           kubeletExtraArgs:
             cloud-provider: external
@@ -137,3 +249,15 @@ spec:
       tags: [ ${WORKER_MACHINE_TAG} ]
       # Enable ephemeral deployment - machines will deploy in memory instead of disk
       ephemeral: true 
+          kubeletExtraArgs:
+            event-qps: "0"
+            feature-gates: RotateKubeletServerCertificate=true
+            read-only-port: "0"
+          name: '{{ v1.local_hostname }}'
+      preKubeadmCommands:
+        - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
+          sleep 1; done
+        - sed -ri '/\sswap\s/s/^#?/#/' /etc/fstab
+        - swapoff -a
+      useExperimentalRetryJoin: true 
+

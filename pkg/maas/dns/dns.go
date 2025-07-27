@@ -3,16 +3,17 @@ package dns
 import (
 	"context"
 
-	infrainfrav1beta1 "github.com/moondev/cluster-api-provider-maas/api/v1beta1"
-	"github.com/moondev/cluster-api-provider-maas/pkg/maas/scope"
+
+	"github.com/canonical/gomaasclient/client"
 	"github.com/pkg/errors"
-	"github.com/spectrocloud/maas-client-go/maasclient"
+	infrainfrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
+	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 type Service struct {
 	scope      *scope.ClusterScope
-	maasClient maasclient.ClientSetInterface
+	maasClient client.ClientSetInterface
 }
 
 var ErrNotFound = errors.New("resource not found")
@@ -119,7 +120,7 @@ func (s *Service) GetAPIServerDNSRecords() (sets.String, error) {
 	return ips, nil
 }
 
-func (s *Service) GetDNSResource() (maasclient.DNSResource, error) {
+func (s *Service) GetDNSResource() (client.DNSResource, error) {
 	dnsName := s.scope.GetDNSName()
 	if dnsName == "" {
 		return nil, errors.New("No DNS on the cluster set!")
@@ -127,7 +128,7 @@ func (s *Service) GetDNSResource() (maasclient.DNSResource, error) {
 
 	d, err := s.maasClient.DNSResources().
 		List(context.Background(),
-			maasclient.ParamsBuilder().Set(maasclient.FQDNKey, dnsName))
+			client.ParamsBuilder().Set(client.FQDNKey, dnsName))
 	if err != nil {
 		return nil, errors.Wrapf(err, "error retrieving dns resources %q", dnsName)
 	} else if len(d) > 1 {

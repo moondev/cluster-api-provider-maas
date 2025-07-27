@@ -20,11 +20,12 @@ import (
 	"os"
 
 	"github.com/canonical/gomaasclient/client"
-	"github.com/spectrocloud/maas-client-go/maasclient"
+
 )
 
 // NewMaasClient creates a new MaaS client for a given session
 // TODO (looking up on Env really the besT? though it is kind of what EC2 does
+
 func NewMaasClient(_ *ClusterScope) *client.Client {
 
 	maasEndpoint := os.Getenv("MAAS_ENDPOINT")
@@ -47,6 +48,7 @@ func NewMaasClient(_ *ClusterScope) *client.Client {
 // NewSpectroMaasClient creates a new Spectro MaaS client for a given session
 func NewSpectroMaasClient(_ *ClusterScope) maasclient.ClientSetInterface {
 
+
 	maasEndpoint := os.Getenv("MAAS_ENDPOINT")
 	if maasEndpoint == "" {
 		panic("missing env MAAS_ENDPOINT; e.g: MAAS_ENDPOINT=http://10.11.130.11:5240/MAAS")
@@ -57,6 +59,6 @@ func NewSpectroMaasClient(_ *ClusterScope) maasclient.ClientSetInterface {
 		panic("missing env MAAS_API_KEY; e.g: MAAS_API_KEY=x:y:z>")
 	}
 
-	maasClient := maasclient.NewAuthenticatedClientSet(maasEndpoint, maasAPIKey)
+	maasClient := client.NewAuthenticatedClientSet(maasEndpoint, maasAPIKey)
 	return maasClient
 }

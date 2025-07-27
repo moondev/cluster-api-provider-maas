@@ -1,9 +1,11 @@
 package machine
 
 import (
+
 	"github.com/canonical/gomaasclient/client"
 	"github.com/canonical/gomaasclient/entity"
 	"github.com/pkg/errors"
+
 	"k8s.io/klog/v2/textlogger"
 
 	infrav1beta1 "github.com/moondev/cluster-api-provider-maas/api/v1beta1"
@@ -68,7 +70,9 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 		failureDomain = s.scope.Machine.Spec.FailureDomain
 	}
 
+
 	var m *entity.Machine
+
 	var err error
 
 	if s.scope.GetProviderID() == "" {
@@ -138,7 +142,9 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 	return machine, nil
 }
 
+
 func fromSDKTypeToMachine(m *entity.Machine) *infrav1beta1.Machine {
+
 	machine := &infrav1beta1.Machine{
 		ID:               m.SystemID,
 		Hostname:         m.Hostname,
