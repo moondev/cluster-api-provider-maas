@@ -32,6 +32,27 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
+      path: /mutate-infrastructure-cluster-x-k8s-io-v1beta1-maasclustertemplate
+  failurePolicy: Fail
+  name: mmaasclustertemplate.kb.io
+  rules:
+  - apiGroups:
+    - infrastructure.cluster.x-k8s.io
+    apiVersions:
+    - v1beta1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - maasclustertemplates
+  sideEffects: None
+- admissionReviewVersions:
+  - v1beta1
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
       path: /mutate-infrastructure-cluster-x-k8s-io-v1beta1-maasmachine
   failurePolicy: Fail
   name: mmaasmachine.kb.io
@@ -93,6 +114,27 @@ webhooks:
     - UPDATE
     resources:
     - maasclusters
+  sideEffects: None
+- admissionReviewVersions:
+  - v1beta1
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-infrastructure-cluster-x-k8s-io-v1beta1-maasclustertemplate
+  failurePolicy: Fail
+  name: vmaasclustertemplate.kb.io
+  rules:
+  - apiGroups:
+    - infrastructure.cluster.x-k8s.io
+    apiVersions:
+    - v1beta1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - maasclustertemplates
   sideEffects: None
 - admissionReviewVersions:
   - v1beta1

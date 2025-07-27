@@ -11,10 +11,12 @@ import (
 	"k8s.io/klog/v2/klogr"
 	"sigs.k8s.io/cluster-api/api/v1beta1"
 
+
 	"github.com/canonical/gomaasclient/client"
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	mockclientset "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/client/mock"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
+
 )
 
 func TestDNS(t *testing.T) {

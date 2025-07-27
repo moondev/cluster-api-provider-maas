@@ -8,10 +8,22 @@ spec:
   dnsDomain: ${MAAS_DNS_DOMAIN}
 
 ---
+
 apiVersion: cluster.x-k8s.io/v1beta1
 kind: Cluster
 metadata:
   name: "${CLUSTER_NAME}"
+
+  namespace: "${NAMESPACE}"
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+      - 192.168.0.0/16
+    serviceDomain: cluster.local
+    services:
+      cidrBlocks:
+      - 10.96.0.0/12
 spec:
   clusterNetwork:
     services:
@@ -19,6 +31,7 @@ spec:
     pods:
       cidrBlocks: ["192.168.0.0/16"]
     serviceDomain: "cluster.local"
+
   controlPlaneRef:
     apiVersion: controlplane.cluster.x-k8s.io/v1beta1
     kind: KubeadmControlPlane
@@ -27,6 +40,15 @@ spec:
     apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
     kind: MaasCluster
     name: "${CLUSTER_NAME}"
+
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasCluster
+metadata:
+  name: "${CLUSTER_NAME}"
+  namespace: "${NAMESPACE}"
+spec:
+  dnsDomain: "${DNS_DOMAIN}"
 
 ---
 # Control Plane Machine Template with Ephemeral Deployment
@@ -44,11 +66,13 @@ spec:
       tags: [ ${ CONTROL_PLANE_MACHINE_TAG } ]
       # Enable ephemeral deployment - machines will deploy in memory instead of disk
       ephemeral: true
+
 ---
 apiVersion: controlplane.cluster.x-k8s.io/v1beta1
 kind: KubeadmControlPlane
 metadata:
   name: "${CLUSTER_NAME}-control-plane"
+  namespace: "${NAMESPACE}"
 spec:
   replicas: ${CONTROL_PLANE_MACHINE_COUNT}
   version: "${KUBERNETES_VERSION}"
@@ -60,6 +84,40 @@ spec:
   kubeadmConfigSpec:
     clusterConfiguration:
       apiServer:
+
+        certSANs:
+        - localhost
+        - 127.0.0.1
+        - 0.0.0.0
+        - "${CLUSTER_NAME}-apiserver.${DNS_DOMAIN}"
+      controllerManager:
+        extraArgs:
+          enable-hostpath-provisioner: "true"
+    initConfiguration:
+      nodeRegistration:
+        criSocket: /var/run/containerd/containerd.sock
+        kubeletExtraArgs:
+          cloud-provider: external
+    joinConfiguration:
+      nodeRegistration:
+        criSocket: /var/run/containerd/containerd.sock
+        kubeletExtraArgs:
+          cloud-provider: external
+---
+# Control Plane Machine Template with Ephemeral Deployment
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: "${CLUSTER_NAME}-control-plane"
+  namespace: "${NAMESPACE}"
+spec:
+  template:
+    spec:
+      minCPU: ${CONTROL_PLANE_MACHINE_MINCPU}
+      minMemory: ${CONTROL_PLANE_MACHINE_MINMEMORY}
+      image: ${CONTROL_PLANE_MACHINE_IMAGE}
+      resourcePool: ${CONTROL_PLANE_MACHINE_RESOURCEPOOL}
+      tags: [ ${CONTROL_PLANE_MACHINE_TAG} ]
         extraArgs:
           anonymous-auth: "true"
           authorization-mode: RBAC,Node
@@ -120,6 +178,7 @@ spec:
       image: ${WORKER_MACHINE_IMAGE}
       resourcePool: ${WORKER_MACHINE_RESOURCEPOOL}
       tags: [ ${ WORKER_MACHINE_TAG } ]
+
       # Enable ephemeral deployment - machines will deploy in memory instead of disk
       ephemeral: true
 ---
@@ -127,6 +186,16 @@ apiVersion: cluster.x-k8s.io/v1beta1
 kind: MachineDeployment
 metadata:
   name: "${CLUSTER_NAME}-md-0"
+
+  namespace: "${NAMESPACE}"
+spec:
+  clusterName: "${CLUSTER_NAME}"
+  replicas: ${WORKER_MACHINE_COUNT}
+  selector:
+    matchLabels: {}
+  template:
+    metadata:
+      labels: {}
 spec:
   clusterName: "${CLUSTER_NAME}"
   replicas: 1
@@ -134,6 +203,7 @@ spec:
     matchLabels:
       cluster.x-k8s.io/cluster-name: "${CLUSTER_NAME}"
   template:
+
     spec:
       clusterName: "${CLUSTER_NAME}"
       version: "${KUBERNETES_VERSION}"
@@ -151,11 +221,34 @@ apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
 kind: KubeadmConfigTemplate
 metadata:
   name: "${CLUSTER_NAME}-md-0"
+
+  namespace: "${NAMESPACE}"
 spec:
   template:
     spec:
       joinConfiguration:
         nodeRegistration:
+
+          criSocket: /var/run/containerd/containerd.sock
+          kubeletExtraArgs:
+            cloud-provider: external
+---
+# Worker Machine Template with Ephemeral Deployment
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: "${CLUSTER_NAME}-md-0"
+  namespace: "${NAMESPACE}"
+spec:
+  template:
+    spec:
+      minCPU: ${WORKER_MACHINE_MINCPU}
+      minMemory: ${WORKER_MACHINE_MINMEMORY}
+      image: ${WORKER_MACHINE_IMAGE}
+      resourcePool: ${WORKER_MACHINE_RESOURCEPOOL}
+      tags: [ ${WORKER_MACHINE_TAG} ]
+      # Enable ephemeral deployment - machines will deploy in memory instead of disk
+      ephemeral: true 
           kubeletExtraArgs:
             event-qps: "0"
             feature-gates: RotateKubeletServerCertificate=true
@@ -167,3 +260,4 @@ spec:
         - sed -ri '/\sswap\s/s/^#?/#/' /etc/fstab
         - swapoff -a
       useExperimentalRetryJoin: true 
+

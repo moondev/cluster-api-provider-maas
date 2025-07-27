@@ -18,10 +18,12 @@ package v1beta1
 
 import (
 	"fmt"
+
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -52,6 +54,19 @@ func (r *MaasCluster) Default() {
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *MaasCluster) ValidateCreate() (admission.Warnings, error) {
 	maasclusterlog.Info("validate create", "name", r.Name)
+
+	// ClusterClass/managed topology validation
+	if isManagedTopology(r) {
+		if r.Spec.DNSDomain == "" {
+			return nil, apierrors.NewInvalid(
+				GroupVersion.WithKind("MaasCluster").GroupKind(),
+				r.Name,
+				field.ErrorList{
+					field.Required(field.NewPath("spec").Child("dnsDomain"), "spec.dnsDomain is required for managed topology (ClusterClass)"),
+				},
+			)
+		}
+	}
 	return nil, nil
 }
 
@@ -66,6 +81,19 @@ func (r *MaasCluster) ValidateUpdate(old runtime.Object) (admission.Warnings, er
 	if r.Spec.DNSDomain != oldC.Spec.DNSDomain {
 		return nil, apierrors.NewBadRequest("changing cluster DNS Domain not allowed")
 	}
+
+	// ClusterClass/managed topology validation
+	if isManagedTopology(r) {
+		if r.Spec.DNSDomain == "" {
+			return nil, apierrors.NewInvalid(
+				GroupVersion.WithKind("MaasCluster").GroupKind(),
+				r.Name,
+				field.ErrorList{
+					field.Required(field.NewPath("spec").Child("dnsDomain"), "spec.dnsDomain is required for managed topology (ClusterClass)"),
+				},
+			)
+		}
+	}
 	return nil, nil
 }
 
@@ -73,4 +101,11 @@ func (r *MaasCluster) ValidateUpdate(old runtime.Object) (admission.Warnings, er
 func (r *MaasCluster) ValidateDelete() (admission.Warnings, error) {
 	maasclusterlog.Info("validate delete", "name", r.Name)
 	return nil, nil
+}
+
+// isManagedTopology returns true if the MaasCluster is being used in a managed topology (ClusterClass) context.
+func isManagedTopology(r *MaasCluster) bool {
+	// Managed topology clusters have the label: "topology.cluster.x-k8s.io/owned: ""
+	_, ok := r.Labels["topology.cluster.x-k8s.io/owned"]
+	return ok
 }

@@ -19,15 +19,16 @@ package main
 import (
 	"context"
 	"flag"
-	"k8s.io/klog/v2/textlogger"
 	"math/rand"
 	"os"
-	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"time"
+
+	"k8s.io/klog/v2/textlogger"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
 	"sigs.k8s.io/cluster-api/controllers/remote"
 
-	"github.com/spectrocloud/cluster-api-provider-maas/controllers"
+	"github.com/moondev/cluster-api-provider-maas/controllers"
 
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -39,7 +40,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
-	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
+	infrav1beta1 "github.com/moondev/cluster-api-provider-maas/api/v1beta1"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	webhookserver "sigs.k8s.io/controller-runtime/pkg/webhook"
 	// +kubebuilder:scaffold:imports
@@ -169,6 +170,10 @@ func main() {
 	}
 	if err = (&infrav1beta1.MaasMachineTemplate{}).SetupWebhookWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create webhook", "webhook", "MaasMachineTemplate")
+		os.Exit(1)
+	}
+	if err = (&infrav1beta1.MaasClusterTemplate{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "MaasClusterTemplate")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

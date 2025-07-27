@@ -18,10 +18,12 @@ package v1beta1
 
 import (
 	"fmt"
+
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -52,6 +54,28 @@ func (r *MaasMachineTemplate) Default() {
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *MaasMachineTemplate) ValidateCreate() (admission.Warnings, error) {
 	maasmachinetemplatelog.Info("validate create", "name", r.Name)
+
+	// ClusterClass/managed topology validation
+	if isManagedTopologyTemplate(r) {
+		flds := field.ErrorList{}
+		spec := r.Spec.Template.Spec
+		if spec.Image == "" {
+			flds = append(flds, field.Required(field.NewPath("spec").Child("template").Child("spec").Child("image"), "spec.template.spec.image is required for managed topology (ClusterClass)"))
+		}
+		if spec.MinCPU == nil {
+			flds = append(flds, field.Required(field.NewPath("spec").Child("template").Child("spec").Child("minCPU"), "spec.template.spec.minCPU is required for managed topology (ClusterClass)"))
+		}
+		if spec.MinMemoryInMB == nil {
+			flds = append(flds, field.Required(field.NewPath("spec").Child("template").Child("spec").Child("minMemory"), "spec.template.spec.minMemory is required for managed topology (ClusterClass)"))
+		}
+		if len(flds) > 0 {
+			return nil, apierrors.NewInvalid(
+				GroupVersion.WithKind("MaasMachineTemplate").GroupKind(),
+				r.Name,
+				flds,
+			)
+		}
+	}
 	return nil, nil
 }
 
@@ -71,6 +95,28 @@ func (r *MaasMachineTemplate) ValidateUpdate(old runtime.Object) (admission.Warn
 	if *r.Spec.Template.Spec.MinMemoryInMB != *oldM.Spec.Template.Spec.MinMemoryInMB {
 		return nil, apierrors.NewBadRequest(fmt.Sprintf("maas machine template min memory change is not allowed, old=%d MB, new=%d MB", oldM.Spec.Template.Spec.MinMemoryInMB, r.Spec.Template.Spec.MinMemoryInMB))
 	}
+
+	// ClusterClass/managed topology validation
+	if isManagedTopologyTemplate(r) {
+		flds := field.ErrorList{}
+		spec := r.Spec.Template.Spec
+		if spec.Image == "" {
+			flds = append(flds, field.Required(field.NewPath("spec").Child("template").Child("spec").Child("image"), "spec.template.spec.image is required for managed topology (ClusterClass)"))
+		}
+		if spec.MinCPU == nil {
+			flds = append(flds, field.Required(field.NewPath("spec").Child("template").Child("spec").Child("minCPU"), "spec.template.spec.minCPU is required for managed topology (ClusterClass)"))
+		}
+		if spec.MinMemoryInMB == nil {
+			flds = append(flds, field.Required(field.NewPath("spec").Child("template").Child("spec").Child("minMemory"), "spec.template.spec.minMemory is required for managed topology (ClusterClass)"))
+		}
+		if len(flds) > 0 {
+			return nil, apierrors.NewInvalid(
+				GroupVersion.WithKind("MaasMachineTemplate").GroupKind(),
+				r.Name,
+				flds,
+			)
+		}
+	}
 	return nil, nil
 }
 
@@ -78,4 +124,10 @@ func (r *MaasMachineTemplate) ValidateUpdate(old runtime.Object) (admission.Warn
 func (r *MaasMachineTemplate) ValidateDelete() (admission.Warnings, error) {
 	maasmachinetemplatelog.Info("validate delete", "name", r.Name)
 	return nil, nil
+}
+
+// isManagedTopologyTemplate returns true if the MaasMachineTemplate is being used in a managed topology (ClusterClass) context.
+func isManagedTopologyTemplate(r *MaasMachineTemplate) bool {
+	_, ok := r.Labels["topology.cluster.x-k8s.io/owned"]
+	return ok
 }

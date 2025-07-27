@@ -19,10 +19,13 @@ package scope
 import (
 	"context"
 	"fmt"
+	"sync"
+	"time"
+
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
+	infrav1beta1 "github.com/moondev/cluster-api-provider-maas/api/v1beta1"
 	"github.com/pkg/errors"
-	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -33,8 +36,6 @@ import (
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
-	"sync"
-	"time"
 )
 
 const (

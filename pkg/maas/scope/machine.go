@@ -19,10 +19,11 @@ package scope
 import (
 	"context"
 	"fmt"
+
 	"github.com/go-logr/logr"
+	infrav1beta1 "github.com/moondev/cluster-api-provider-maas/api/v1beta1"
+	infrautil "github.com/moondev/cluster-api-provider-maas/pkg/util"
 	"github.com/pkg/errors"
-	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
-	infrautil "github.com/spectrocloud/cluster-api-provider-maas/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/pointer"

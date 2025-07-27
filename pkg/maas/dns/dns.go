@@ -3,6 +3,7 @@ package dns
 import (
 	"context"
 
+
 	"github.com/canonical/gomaasclient/client"
 	"github.com/pkg/errors"
 	infrainfrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
@@ -21,7 +22,7 @@ var ErrNotFound = errors.New("resource not found")
 func NewService(clusterScope *scope.ClusterScope) *Service {
 	return &Service{
 		scope:      clusterScope,
-		maasClient: scope.NewMaasClient(clusterScope),
+		maasClient: scope.NewSpectroMaasClient(clusterScope),
 	}
 }
 
