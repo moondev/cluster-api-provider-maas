@@ -2,9 +2,10 @@ package machine
 
 import (
 	"context"
+
+	"github.com/canonical/gomaasclient/client"
 	"github.com/pkg/errors"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
-	"github.com/spectrocloud/maas-client-go/maasclient"
 	"k8s.io/klog/v2/textlogger"
 
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
@@ -14,7 +15,7 @@ import (
 // Service manages the MaaS machine
 type Service struct {
 	scope      *scope.MachineScope
-	maasClient maasclient.ClientSetInterface
+	maasClient client.ClientSetInterface
 }
 
 // DNS service returns a new helper for managing a MaaS "DNS" (DNS client loadbalancing)
@@ -66,7 +67,7 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 		failureDomain = s.scope.Machine.Spec.FailureDomain
 	}
 
-	var m maasclient.Machine
+	var m client.Machine
 	var err error
 
 	if s.scope.GetProviderID() == "" {
@@ -127,10 +128,16 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 
 	s.scope.Info("Swap disabled", "system-id", m.SystemID())
 
-	deployingM, err := m.Deployer().
-		SetUserData(userDataB64).
-		SetOSSystem("custom").
-		SetDistroSeries(mm.Spec.Image).Deploy(ctx)
+	// Check for ephemeral mode
+	ephemeral := s.scope.MaasMachine.Spec.Ephemeral
+
+	// Deploy the machine
+	deployer := m.Deployer().SetUserData(userDataB64).SetOSSystem("custom").SetDistroSeries(mm.Spec.Image)
+	if ephemeral {
+		// Add logic for ephemeral deployment (in-memory)
+		deployer = deployer.SetEphemeral(true)
+	}
+	deployingM, err := deployer.Deploy(ctx)
 	if err != nil {
 		return nil, errors.Wrapf(err, "Unable to deploy machine")
 	}
@@ -138,7 +145,7 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 	return fromSDKTypeToMachine(deployingM), nil
 }
 
-func fromSDKTypeToMachine(m maasclient.Machine) *infrav1beta1.Machine {
+func fromSDKTypeToMachine(m client.Machine) *infrav1beta1.Machine {
 	machine := &infrav1beta1.Machine{
 		ID:               m.SystemID(),
 		Hostname:         m.Hostname(),

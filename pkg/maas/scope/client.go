@@ -17,13 +17,14 @@ limitations under the License.
 package scope
 
 import (
-	"github.com/spectrocloud/maas-client-go/maasclient"
 	"os"
+
+	"github.com/canonical/gomaasclient/client"
 )
 
 // NewMaasClient creates a new MaaS client for a given session
 // TODO (looking up on Env really the besT? though it is kind of what EC2 does
-func NewMaasClient(_ *ClusterScope) maasclient.ClientSetInterface {
+func NewMaasClient(_ *ClusterScope) client.ClientSetInterface {
 
 	maasEndpoint := os.Getenv("MAAS_ENDPOINT")
 	if maasEndpoint == "" {
@@ -35,6 +36,6 @@ func NewMaasClient(_ *ClusterScope) maasclient.ClientSetInterface {
 		panic("missing env MAAS_API_KEY; e.g: MAAS_API_KEY=x:y:z>")
 	}
 
-	maasClient := maasclient.NewAuthenticatedClientSet(maasEndpoint, maasAPIKey)
+	maasClient := client.NewAuthenticatedClientSet(maasEndpoint, maasAPIKey)
 	return maasClient
 }
