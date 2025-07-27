@@ -11,9 +11,9 @@ import (
 	"k8s.io/klog/v2/klogr"
 	"sigs.k8s.io/cluster-api/api/v1beta1"
 
-	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
-	mockclientset "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/client/mock"
-	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
+	infrav1beta1 "github.com/moondev/cluster-api-provider-maas/api/v1beta1"
+	mockclientset "github.com/moondev/cluster-api-provider-maas/pkg/maas/client/mock"
+	"github.com/moondev/cluster-api-provider-maas/pkg/maas/scope"
 	"github.com/spectrocloud/maas-client-go/maasclient"
 )
 
