@@ -11,10 +11,10 @@ import (
 	"k8s.io/klog/v2/klogr"
 	"sigs.k8s.io/cluster-api/api/v1beta1"
 
+	"github.com/canonical/gomaasclient/client"
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	mockclientset "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/client/mock"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
-	"github.com/spectrocloud/maas-client-go/maasclient"
 )
 
 func TestDNS(t *testing.T) {
@@ -76,7 +76,7 @@ func TestDNS(t *testing.T) {
 		}
 
 		mockClientSetInterface.EXPECT().DNSResources().Return(mockDNSResources)
-		mockDNSResources.EXPECT().List(context.Background(), gomock.Any()).Return([]maasclient.DNSResource{mockDNSResource}, nil)
+		mockDNSResources.EXPECT().List(context.Background(), gomock.Any()).Return([]client.DNSResource{mockDNSResource}, nil)
 		mockDNSResource.EXPECT().Modifier().Return(mockDNSResourceModifier)
 		mockDNSResourceModifier.EXPECT().SetIPAddresses([]string{"1.1.1.1", "8.8.8.8"}).Return(mockDNSResourceModifier)
 		mockDNSResourceModifier.EXPECT().Modify(context.Background()).Return(mockDNSResource, nil)
@@ -102,8 +102,8 @@ func TestDNS(t *testing.T) {
 			maasClient: mockClientSetInterface,
 		}
 		mockClientSetInterface.EXPECT().DNSResources().Return(mockDNSResources)
-		mockDNSResources.EXPECT().List(context.Background(), gomock.Any()).Return([]maasclient.DNSResource{mockDNSResource}, nil)
-		mockDNSResource.EXPECT().IPAddresses().Return([]maasclient.IPAddress{mockIPAddress})
+		mockDNSResources.EXPECT().List(context.Background(), gomock.Any()).Return([]client.DNSResource{mockDNSResource}, nil)
+		mockDNSResource.EXPECT().IPAddresses().Return([]client.IPAddress{mockIPAddress})
 		mockIPAddress.EXPECT().IP().Return(net.ParseIP("1.1.1.1"))
 		mockIPAddress.EXPECT().IP().Return(net.ParseIP("8.8.8.8"))
 
