@@ -22,7 +22,7 @@ IMG_TAG ?= v0.6.1
 IMG ?= ${IMG_URL}/${IMAGE_NAME}:${IMG_TAG}
 
 # Set --output-base for conversion-gen if we are not within GOPATH
-ifneq ($(abspath $(REPO_ROOT)),$(shell go env GOPATH)/src/github.com/spectrocloud/cluster-api-provider-maas)
+ifneq ($(abspath $(REPO_ROOT)),$(shell go env GOPATH)/src/github.com/moondev/cluster-api-provider-maas)
 	GEN_OUTPUT_BASE := --output-base=$(REPO_ROOT)
 else
 	export GOPATH := $(shell go env GOPATH)
@@ -139,7 +139,7 @@ generate-go:
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
 	$(CONVERSION_GEN) \
-		--extra-peer-dirs=github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1 \
+		--extra-peer-dirs=github.com/moondev/cluster-api-provider-maas/api/v1beta1 \
 		--output-file=zz_generated.conversion \
 		--go-header-file=./hack/boilerplate.go.txt \
 		./api/v1beta1

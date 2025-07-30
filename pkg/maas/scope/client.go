@@ -17,8 +17,9 @@ limitations under the License.
 package scope
 
 import (
-	"github.com/spectrocloud/maas-client-go/maasclient"
 	"os"
+
+	"github.com/moondev/maas-client-go/maasclient"
 )
 
 // NewMaasClient creates a new MaaS client for a given session

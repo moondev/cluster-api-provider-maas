@@ -2,12 +2,13 @@ package machine
 
 import (
 	"context"
+
+	"github.com/moondev/cluster-api-provider-maas/pkg/maas/scope"
+	"github.com/moondev/maas-client-go/maasclient"
 	"github.com/pkg/errors"
-	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
-	"github.com/spectrocloud/maas-client-go/maasclient"
 	"k8s.io/klog/v2/textlogger"
 
-	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
+	infrav1beta1 "github.com/moondev/cluster-api-provider-maas/api/v1beta1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 

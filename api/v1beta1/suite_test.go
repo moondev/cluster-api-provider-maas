@@ -28,7 +28,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	"github.com/spectrocloud/cluster-api-provider-maas/test/helpers"
+	"github.com/moondev/cluster-api-provider-maas/test/helpers"
 )
 
 var (

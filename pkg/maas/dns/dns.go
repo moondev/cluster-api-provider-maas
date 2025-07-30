@@ -2,10 +2,11 @@ package dns
 
 import (
 	"context"
+
+	infrainfrav1beta1 "github.com/moondev/cluster-api-provider-maas/api/v1beta1"
+	"github.com/moondev/cluster-api-provider-maas/pkg/maas/scope"
+	"github.com/moondev/maas-client-go/maasclient"
 	"github.com/pkg/errors"
-	infrainfrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
-	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
-	"github.com/spectrocloud/maas-client-go/maasclient"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
