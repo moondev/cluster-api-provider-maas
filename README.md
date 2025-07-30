@@ -338,3 +338,72 @@ or
 clusterctl generate cluster t-cluster --infrastructure=maas:v0.5.0 --kubernetes-version v1.26.4 --control-plane-machine-count=1 --worker-machine-count=3 > my_cluster.yaml
 kubectl apply -f my_cluster.yaml
 ```
+
+## Ephemeral Deployment Feature
+
+The MAAS provider supports ephemeral deployment, which allows machines to be deployed in-memory instead of on-disk. This feature is useful for temporary workloads, testing, or development environments.
+
+### Configuration
+
+To enable ephemeral deployment, add the `ephemeralDeploy` field to your MaasMachine or MaasMachineTemplate spec:
+
+```yaml
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachine
+metadata:
+  name: my-ephemeral-machine
+spec:
+  minCPU: 2
+  minMemory: 4096
+  image: "ubuntu/focal"
+  ephemeralDeploy: true  # Enable in-memory deployment
+```
+
+### Usage Examples
+
+#### Persistent Deployment (Default)
+```yaml
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachine
+metadata:
+  name: persistent-machine
+spec:
+  minCPU: 2
+  minMemory: 4096
+  image: "ubuntu/focal"
+  ephemeralDeploy: false  # or omit this field
+```
+
+#### Ephemeral Deployment
+```yaml
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachine
+metadata:
+  name: ephemeral-machine
+spec:
+  minCPU: 1
+  minMemory: 2048
+  image: "ubuntu/focal"
+  ephemeralDeploy: true  # Enable in-memory deployment
+```
+
+### Benefits of Ephemeral Deployment
+
+- **Faster Deployment**: In-memory deployment is typically faster than on-disk deployment
+- **Resource Efficiency**: Ephemeral machines don't consume disk space for the OS image
+- **Testing & Development**: Ideal for temporary workloads and development environments
+- **Cost Optimization**: Reduced storage costs for temporary workloads
+
+### Considerations
+
+- **Data Persistence**: Ephemeral machines lose all data when powered off or rebooted
+- **Performance**: May have different performance characteristics compared to persistent deployments
+- **Use Cases**: Best suited for stateless workloads, testing, and development
+
+### Sample Files
+
+See the following sample files for complete examples:
+- `config/samples/infrastructure_v1beta1_maasmachine.yaml` - Basic machine with persistent deployment
+- `config/samples/infrastructure_v1beta1_maasmachine_ephemeral.yaml` - Machine with ephemeral deployment
+- `config/samples/infrastructure_v1beta1_maasmachinetemplate.yaml` - Template with persistent deployment
+- `config/samples/infrastructure_v1beta1_maasmachinetemplate_ephemeral.yaml` - Template with ephemeral deployment

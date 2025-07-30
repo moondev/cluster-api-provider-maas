@@ -128,10 +128,20 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 
 	s.scope.Info("Swap disabled", "system-id", m.SystemID())
 
-	deployingM, err := m.Deployer().
+	deployer := m.Deployer().
 		SetUserData(userDataB64).
 		SetOSSystem("custom").
-		SetDistroSeries(mm.Spec.Image).Deploy(ctx)
+		SetDistroSeries(mm.Spec.Image)
+
+	// Set ephemeral deployment if specified
+	if mm.Spec.EphemeralDeploy != nil {
+		deployer = deployer.SetEphemeralDeploy(*mm.Spec.EphemeralDeploy)
+		s.scope.Info("Deploying machine", "system-id", m.SystemID(), "ephemeral", *mm.Spec.EphemeralDeploy)
+	} else {
+		s.scope.Info("Deploying machine", "system-id", m.SystemID(), "ephemeral", false)
+	}
+
+	deployingM, err := deployer.Deploy(ctx)
 	if err != nil {
 		return nil, errors.Wrapf(err, "Unable to deploy machine")
 	}

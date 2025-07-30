@@ -4,22 +4,22 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.16.1
-  name: maasmachines.infrastructure.cluster.x-k8s.io
+  name: maasclusters.infrastructure.cluster.x-k8s.io
 spec:
   group: infrastructure.cluster.x-k8s.io
   names:
     categories:
     - cluster-api
-    kind: MaasMachine
-    listKind: MaasMachineList
-    plural: maasmachines
-    singular: maasmachine
+    kind: MaasCluster
+    listKind: MaasClusterList
+    plural: maasclusters
+    singular: maascluster
   scope: Namespaced
   versions:
   - name: v1beta1
     schema:
       openAPIV3Schema:
-        description: MaasMachine is the Schema for the maasmachines API
+        description: MaasCluster is the Schema for the maasclusters API
         properties:
           apiVersion:
             description: |-
@@ -39,74 +39,42 @@ spec:
           metadata:
             type: object
           spec:
-            description: MaasMachineSpec defines the desired state of MaasMachine
+            description: MaasClusterSpec defines the desired state of MaasCluster
             properties:
-              ephemeralDeploy:
-                description: |-
-                  EphemeralDeploy enables in-memory deployment instead of on-disk deployment
-                  When true, the machine will be deployed in ephemeral mode (in-memory)
-                  When false or not specified, the machine will be deployed in persistent mode (on-disk)
-                type: boolean
-              failureDomain:
-                description: |-
-                  FailureDomain is the failure domain the machine will be created in.
-                  Must match a key in the FailureDomains map stored on the cluster object.
-                type: string
-              image:
-                description: Image will be the MaaS image id
+              controlPlaneEndpoint:
+                description: ControlPlaneEndpoint represents the endpoint used to
+                  communicate with the control plane.
+                properties:
+                  host:
+                    description: Host is the hostname on which the API server is serving.
+                    type: string
+                  port:
+                    description: Port is the port on which the API server is serving.
+                    type: integer
+                required:
+                - host
+                - port
+                type: object
+              dnsDomain:
+                description: DNSDomain configures the MaaS domain to create the cluster
+                  on (e.g maas)
                 minLength: 1
                 type: string
-              minCPU:
-                description: MinCPU minimum number of CPUs
-                minimum: 0
-                type: integer
-              minMemory:
-                description: MinMemoryInMB minimum memory in MB
-                minimum: 0
-                type: integer
-              providerID:
-                description: ProviderID will be the name in ProviderID format (maas://<zone>/system_id)
-                type: string
-              resourcePool:
-                description: ResourcePool will be the MAAS Machine resourcepool
-                type: string
-              systemID:
-                description: SystemID will be the MaaS machine ID
-                type: string
-              tags:
-                description: Tags for placement
+              failureDomains:
+                description: |-
+                  FailureDomains are not usually defined on the spec.
+                  but useful for MaaS since we can limit the domains to these
                 items:
                   type: string
                 type: array
             required:
-            - image
-            - minCPU
-            - minMemory
+            - dnsDomain
             type: object
           status:
-            description: MaasMachineStatus defines the observed state of MaasMachine
+            description: MaasClusterStatus defines the observed state of MaasCluster
             properties:
-              addresses:
-                description: Addresses contains the associated addresses for the maas
-                  machine.
-                items:
-                  description: MachineAddress contains information for the node's
-                    address.
-                  properties:
-                    address:
-                      description: The machine address.
-                      type: string
-                    type:
-                      description: Machine address type, one of Hostname, ExternalIP,
-                        InternalIP, ExternalDNS or InternalDNS.
-                      type: string
-                  required:
-                  - address
-                  - type
-                  type: object
-                type: array
               conditions:
-                description: Conditions defines current service state of the MaasMachine.
+                description: Conditions defines current service state of the MaasCluster.
                 items:
                   description: Condition defines an observation of a Cluster API resource
                     operational state.
@@ -150,34 +118,40 @@ spec:
                   - type
                   type: object
                 type: array
-              dnsAttached:
-                description: DNSAttached specifies whether the DNS record contains
-                  the IP of this machine
-                type: boolean
-              failureMessage:
+              failureDomains:
+                additionalProperties:
+                  description: |-
+                    FailureDomainSpec is the Schema for Cluster API failure domains.
+                    It allows controllers to understand how many failure domains a cluster can optionally span across.
+                  properties:
+                    attributes:
+                      additionalProperties:
+                        type: string
+                      description: attributes is a free form map of attributes an
+                        infrastructure provider might use or require.
+                      type: object
+                    controlPlane:
+                      description: controlPlane determines if this failure domain
+                        is suitable for use by control plane machines.
+                      type: boolean
+                  type: object
                 description: |-
-                  FailureMessage will be set in the event that there is a terminal problem
-                  reconciling the Machine and will contain a more verbose string suitable
-                  for logging and human consumption.
-                type: string
-              failureReason:
-                description: |-
-                  FailureReason will be set in the event that there is a terminal problem
-                  reconciling the Machine and will contain a succinct value suitable
-                  for machine interpretation.
-                type: string
-              hostname:
-                description: Hostname is the actual MaaS hostname
-                type: string
-              machinePowered:
-                description: MachinePowered is if the machine is "Powered" on
-                type: boolean
-              machineState:
-                description: MachineState is the state of this MAAS machine.
-                type: string
+                  FailureDomains don't mean much in CAPMAAS since it's all local, but we can see how the rest of cluster API
+                  will use this if we populate it.
+                type: object
+              network:
+                description: Network represents the network
+                properties:
+                  dnsName:
+                    description: DNSName is the Kubernetes api server name
+                    type: string
+                type: object
               ready:
                 default: false
-                description: Ready denotes that the machine (maas container) is ready
+                description: |-
+                  INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
+                  Important: Run "make" to regenerate code after modifying this file
+                  Ready denotes that the maas cluster (infrastructure) is ready.
                 type: boolean
             required:
             - ready

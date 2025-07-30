@@ -1,0 +1,114 @@
+# Example ClusterClass for MAAS
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: ClusterClass
+metadata:
+  name: maas-clusterclass
+spec:
+  infrastructure:
+    ref:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      kind: MaasClusterTemplate
+      name: maas-cluster-template
+  controlPlane:
+    ref:
+      apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+      kind: KubeadmControlPlaneTemplate
+      name: maas-control-plane-template
+    machineInfrastructure:
+      ref:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: MaasMachineTemplate
+        name: maas-control-plane-machinetemplate
+  workers:
+    machineDeployments:
+      - class: default-worker
+        template:
+          bootstrap:
+            ref:
+              apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+              kind: KubeadmConfigTemplate
+              name: maas-worker-bootstrap-template
+          infrastructure:
+            ref:
+              apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+              kind: MaasMachineTemplate
+              name: maas-worker-machinetemplate
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasClusterTemplate
+metadata:
+  name: maas-cluster-template
+spec:
+  template:
+    spec:
+      dnsDomain: "${MAAS_DNS_DOMAIN}"
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: maas-control-plane-machinetemplate
+spec:
+  template:
+    spec:
+      minCPU: ${CONTROL_PLANE_MACHINE_MINCPU}
+      minMemory: ${CONTROL_PLANE_MACHINE_MINMEMORY}
+      image: ${CONTROL_PLANE_MACHINE_IMAGE}
+      resourcePool: ${CONTROL_PLANE_MACHINE_RESOURCEPOOL}
+      tags: [ ${CONTROL_PLANE_MACHINE_TAG} ]
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: maas-worker-machinetemplate
+spec:
+  template:
+    spec:
+      minCPU: ${WORKER_MACHINE_MINCPU}
+      minMemory: ${WORKER_MACHINE_MINMEMORY}
+      image: ${WORKER_MACHINE_IMAGE}
+      resourcePool: ${WORKER_MACHINE_RESOURCEPOOL}
+      tags: [ ${WORKER_MACHINE_TAG} ]
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: KubeadmControlPlaneTemplate
+metadata:
+  name: maas-control-plane-template
+spec:
+  template:
+    spec:
+      replicas: ${CONTROL_PLANE_MACHINE_COUNT}
+      version: "${KUBERNETES_VERSION}"
+      machineTemplate:
+        infrastructureRef:
+          apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+          kind: MaasMachineTemplate
+          name: maas-control-plane-machinetemplate
+      kubeadmConfigSpec:
+        # ... (copy from your existing KubeadmControlPlane spec)
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: KubeadmConfigTemplate
+metadata:
+  name: maas-worker-bootstrap-template
+spec:
+  template:
+    spec:
+      # ... (copy from your existing worker bootstrap config)
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: example-managed-cluster
+  labels:
+    cluster.x-k8s.io/cluster-name: example-managed-cluster
+spec:
+  topology:
+    class: maas-clusterclass
+    version: "${KUBERNETES_VERSION}"
+    controlPlane:
+      metadata: {}
+    workers:
+      machineDeployments:
+        - class: default-worker
+          name: md-0
+          replicas: ${WORKER_MACHINE_COUNT} 

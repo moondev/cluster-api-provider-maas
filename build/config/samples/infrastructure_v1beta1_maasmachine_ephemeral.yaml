@@ -1,27 +1,27 @@
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: MaasMachine
 metadata:
-  name: maasmachine-sample
+  name: maasmachine-ephemeral-sample
 spec:
   # Minimum CPU and memory requirements
-  minCPU: 2
-  minMemory: 4096  # 4GB in MB
+  minCPU: 1
+  minMemory: 2048  # 2GB in MB
   
   # MAAS image to use for deployment
   image: "ubuntu/focal"
   
-  # Optional: Deploy in ephemeral mode (in-memory)
-  # When set to true, the machine will be deployed in-memory instead of on-disk
-  # This is useful for temporary workloads or testing
-  ephemeralDeploy: false
+  # Deploy in ephemeral mode (in-memory)
+  # This machine will be deployed in-memory instead of on-disk
+  # Useful for temporary workloads, testing, or development environments
+  ephemeralDeploy: true
   
   # Optional: Failure domain for machine placement
   # failureDomain: "zone1"
   
   # Optional: Resource pool for machine allocation
-  # resourcePool: "pool1"
+  # resourcePool: "ephemeral-pool"
   
   # Optional: Tags for machine placement
   # tags:
-  #   - "production"
-  #   - "web-server"
+  #   - "ephemeral"
+  #   - "testing" 
