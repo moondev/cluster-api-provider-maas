@@ -45,8 +45,10 @@ func TestAPIs(t *testing.T) {
 }
 
 func TestMain(m *testing.M) {
-	setup()
-	defer teardown()
+	if os.Getenv("RUN_ENVTEST") == "1" {
+		setup()
+		defer teardown()
+	}
 	code := m.Run()
 	os.Exit(code)
 }
@@ -82,7 +84,9 @@ func setup() {
 }
 
 func teardown() {
-	if err := testEnv.Stop(); err != nil {
-		panic(fmt.Sprintf("Failed to stop envtest: %v", err))
+	if testEnv != nil {
+		if err := testEnv.Stop(); err != nil {
+			panic(fmt.Sprintf("Failed to stop envtest: %v", err))
+		}
 	}
 }

@@ -119,8 +119,8 @@ func (s *ClusterScope) Close() error {
 
 // APIServerPort returns the APIServerPort to use when creating the load balancer.
 func (s *ClusterScope) APIServerPort() int {
-	if s.Cluster.Spec.ClusterNetwork != nil && s.Cluster.Spec.ClusterNetwork.APIServerPort != nil {
-		return int(*s.Cluster.Spec.ClusterNetwork.APIServerPort)
+	if s.Cluster.Spec.ClusterNetwork.APIServerPort != 0 {
+		return int(s.Cluster.Spec.ClusterNetwork.APIServerPort)
 	}
 	return 6443
 }
@@ -182,11 +182,7 @@ var (
 )
 
 func (s *ClusterScope) ReconcileMaasClusterWhenAPIServerIsOnline() {
-	if s.Cluster.Status.ControlPlaneReady {
-		s.Info("skipping reconcile when API server is online",
-			"reason", "ControlPlaneReady")
-		return
-	} else if !s.Cluster.DeletionTimestamp.IsZero() {
+	if !s.Cluster.DeletionTimestamp.IsZero() {
 		s.Info("skipping reconcile when API server is online",
 			"reason", "controlPlaneDeleting")
 		return

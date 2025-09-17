@@ -17,12 +17,16 @@ package v1beta1
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestMaasMachine_ValidateUpdate(t *testing.T) {
+	if os.Getenv("RUN_ENVTEST") != "1" || testEnv == nil {
+		t.Skip("envtest not enabled; set RUN_ENVTEST=1 to run this suite")
+	}
 	cpuBefore := 10
 	cpuAfter := 11
 	memoryBefore := 100

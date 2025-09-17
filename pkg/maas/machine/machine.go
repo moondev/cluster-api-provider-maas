@@ -43,7 +43,7 @@ func (s *Service) GetMachine(systemID string) (*infrav1beta1.Machine, error) {
 }
 
 func (s *Service) ReleaseMachine(systemID string) error {
-	ctx := context.TODO()
+	ctx := context.Background()
 
 	_, err := s.maasClient.Machines().
 		Machine(systemID).
@@ -57,14 +57,15 @@ func (s *Service) ReleaseMachine(systemID string) error {
 }
 
 func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, rerr error) {
-	ctx := context.TODO()
+	ctx := context.Background()
 	log := textlogger.NewLogger(textlogger.NewConfig())
 
 	mm := s.scope.MaasMachine
 
 	failureDomain := mm.Spec.FailureDomain
-	if failureDomain == nil {
-		failureDomain = s.scope.Machine.Spec.FailureDomain
+	if failureDomain == nil && s.scope.Machine.Spec.FailureDomain != "" {
+		fd := s.scope.Machine.Spec.FailureDomain
+		failureDomain = &fd
 	}
 
 	var m maasclient.Machine

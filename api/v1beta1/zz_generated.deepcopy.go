@@ -22,7 +22,8 @@ package v1beta1
 
 import (
 	"k8s.io/apimachinery/pkg/runtime"
-	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
+	corev1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	"sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/errors"
 )
 
@@ -127,14 +128,14 @@ func (in *MaasClusterStatus) DeepCopyInto(out *MaasClusterStatus) {
 	out.Network = in.Network
 	if in.FailureDomains != nil {
 		in, out := &in.FailureDomains, &out.FailureDomains
-		*out = make(apicorev1beta1.FailureDomains, len(*in))
+		*out = make(corev1beta1.FailureDomains, len(*in))
 		for key, val := range *in {
 			(*out)[key] = *val.DeepCopy()
 		}
 	}
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
-		*out = make(apicorev1beta1.Conditions, len(*in))
+		*out = make(corev1beta1.Conditions, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
@@ -366,12 +367,12 @@ func (in *MaasMachineStatus) DeepCopyInto(out *MaasMachineStatus) {
 	}
 	if in.Addresses != nil {
 		in, out := &in.Addresses, &out.Addresses
-		*out = make([]clusterv1.MachineAddress, len(*in))
+		*out = make([]v1beta2.MachineAddress, len(*in))
 		copy(*out, *in)
 	}
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
-		*out = make(clusterv1.Conditions, len(*in))
+		*out = make(v1beta2.Conditions, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
@@ -493,7 +494,7 @@ func (in *Machine) DeepCopyInto(out *Machine) {
 	*out = *in
 	if in.Addresses != nil {
 		in, out := &in.Addresses, &out.Addresses
-		*out = make([]clusterv1.MachineAddress, len(*in))
+		*out = make([]v1beta2.MachineAddress, len(*in))
 		copy(*out, *in)
 	}
 }

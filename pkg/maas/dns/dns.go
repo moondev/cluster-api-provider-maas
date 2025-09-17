@@ -2,6 +2,7 @@ package dns
 
 import (
 	"context"
+
 	"github.com/pkg/errors"
 	infrainfrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
@@ -27,7 +28,7 @@ func NewService(clusterScope *scope.ClusterScope) *Service {
 // ReconcileDNS reconciles the load balancers for the given cluster.
 func (s *Service) ReconcileDNS() error {
 	s.scope.V(2).Info("Reconciling DNS")
-	ctx := context.TODO()
+	ctx := context.Background()
 
 	dnsResource, err := s.GetDNSResource()
 	if err != nil && !errors.Is(err, ErrNotFound) {
@@ -55,7 +56,7 @@ func (s *Service) ReconcileDNS() error {
 // UpdateAttachments reconciles the load balancers for the given cluster.
 func (s *Service) UpdateDNSAttachments(IPs []string) error {
 	s.scope.V(2).Info("Updating DNS Attachments")
-	ctx := context.TODO()
+	ctx := context.Background()
 	// get ID of loadbalancer
 	dnsResource, err := s.GetDNSResource()
 	if err != nil {

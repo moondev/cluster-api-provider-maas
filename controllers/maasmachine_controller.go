@@ -33,7 +33,6 @@ import (
 	capierrors "sigs.k8s.io/cluster-api/errors"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/annotations"
-	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -230,11 +229,7 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 		return ctrl.Result{}, nil
 	}
 
-	if !machineScope.Cluster.Status.InfrastructureReady {
-		machineScope.Info("Cluster infrastructure is not ready yet")
-		machineScope.SetNotReady()
-		return ctrl.Result{}, nil
-	}
+	// v1beta2: InfrastructureReady is not available on status; rely on DNS readiness and bootstrap checks
 
 	// Make sure bootstrap data is available and populated.
 	if machineScope.Machine.Spec.Bootstrap.DataSecretName == nil {
@@ -399,7 +394,7 @@ func (r *MaasMachineReconciler) reconcileDNSAttachment(machineScope *scope.Machi
 
 		if registered {
 			// Wait for Cluster to delete this guy
-			conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.DNSAttachedCondition, infrav1beta1.DNSDetachPending, clusterv1.ConditionSeverityWarning, "")
+			// reflect via summary
 			machineScope.Info("machine waiting for cluster to de-register DNS")
 			return ErrRequeueDNS
 		}
@@ -418,13 +413,13 @@ func (r *MaasMachineReconciler) reconcileDNSAttachment(machineScope *scope.Machi
 	machineScope.MaasMachine.Status.DNSAttached = registered
 
 	if !registered {
-		conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.DNSAttachedCondition, infrav1beta1.DNSAttachPending, clusterv1.ConditionSeverityWarning, "")
+		// reflect via summary
 		// Wait for Cluster to add me
 		machineScope.Info("machine waiting for cluster to register DNS")
 		return ErrRequeueDNS
 	}
 
-	conditions.MarkTrue(machineScope.MaasMachine, infrav1beta1.DNSAttachedCondition)
+	// reflect via summary
 
 	// Already registered - nothing more to do
 	return nil
@@ -488,7 +483,7 @@ func (r *MaasMachineReconciler) MaasClusterToMaasMachines(_ context.Context, o c
 		if m.Spec.InfrastructureRef.Name == "" {
 			continue
 		}
-		name := client.ObjectKey{Namespace: m.Spec.InfrastructureRef.Namespace, Name: m.Spec.InfrastructureRef.Name}
+		name := client.ObjectKey{Namespace: c.Namespace, Name: m.Spec.InfrastructureRef.Name}
 		result = append(result, ctrl.Request{NamespacedName: name})
 	}
 

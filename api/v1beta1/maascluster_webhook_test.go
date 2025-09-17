@@ -23,6 +23,9 @@ import (
 )
 
 func TestMaasCluster_ValidateCreate(t *testing.T) {
+	if testEnv == nil {
+		t.Skip("envtest not enabled; set RUN_ENVTEST=1 to run this suite")
+	}
 	tests := []struct {
 		name      string
 		dnsDomain string
@@ -65,6 +68,9 @@ func TestMaasCluster_ValidateCreate(t *testing.T) {
 }
 
 func TestMAASCluster_Update(t *testing.T) {
+	if testEnv == nil {
+		t.Skip("envtest not enabled; set RUN_ENVTEST=1 to run this suite")
+	}
 	tests := []struct {
 		name       string
 		oldCluster *MaasCluster

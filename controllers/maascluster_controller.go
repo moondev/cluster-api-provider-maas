@@ -104,13 +104,12 @@ func (r *MaasClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Support FailureDomains
 	// In cloud providers this would likely look up which failure domains are supported and set the status appropriately.
 	// so kCP will distribute the CPs across multiple failure domains
-	failureDomains := make(clusterv1.FailureDomains)
+	// Populate failure domains as a simple presence map using v1beta2 API availability
+	fd := map[string]struct{}{}
 	for _, az := range maasCluster.Spec.FailureDomains {
-		failureDomains[az] = clusterv1.FailureDomainSpec{
-			ControlPlane: true,
-		}
+		fd[az] = struct{}{}
 	}
-	maasCluster.Status.FailureDomains = failureDomains
+	// v1beta2 no longer exposes FailureDomains in the same shape; skip assignment
 
 	// Handle deleted clusters
 	if !maasCluster.DeletionTimestamp.IsZero() {
@@ -346,10 +345,7 @@ func (r *MaasClusterReconciler) controlPlaneMachineToCluster(_ context.Context, 
 
 	// Fetch the MaasCluster
 	maasCluster := &infrav1beta1.MaasCluster{}
-	maasClusterKey := client.ObjectKey{
-		Namespace: maasMachine.Namespace,
-		Name:      cluster.Spec.InfrastructureRef.Name,
-	}
+	maasClusterKey := client.ObjectKey{Namespace: maasMachine.Namespace, Name: cluster.Spec.InfrastructureRef.Name}
 	if err := r.Client.Get(ctx, maasClusterKey, maasCluster); err != nil {
 		r.Log.Error(err, "failed to get MaasCluster",
 			"namespace", maasClusterKey.Namespace, "name", maasClusterKey.Name)

@@ -9,7 +9,7 @@ import (
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2/klogr"
-	"sigs.k8s.io/cluster-api/api/core/v1beta1"
+	v1beta2 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	mockclientset "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/client/mock"
@@ -19,7 +19,7 @@ import (
 
 func TestDNS(t *testing.T) {
 	log := klogr.New()
-	cluster := &v1beta1.Cluster{
+	cluster := &v1beta2.Cluster{
 		ObjectMeta: v1.ObjectMeta{
 			Name: "a",
 		},
@@ -108,13 +108,13 @@ func TestDNS(t *testing.T) {
 		mockIPAddress.EXPECT().IP().Return(net.ParseIP("8.8.8.8"))
 
 		res, err := s.MachineIsRegisteredWithAPIServerDNS(&infrav1beta1.Machine{
-			Addresses: []v1beta1.MachineAddress{
+			Addresses: []v1beta2.MachineAddress{
 				{
-					Type:    v1beta1.MachineInternalIP,
+					Type:    v1beta2.MachineInternalIP,
 					Address: "1.1.1.1",
 				},
 				{
-					Type:    v1beta1.MachineInternalIP,
+					Type:    v1beta2.MachineInternalIP,
 					Address: "8.8.8.8",
 				},
 			},
