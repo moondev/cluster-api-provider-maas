@@ -22,7 +22,7 @@ package v1beta1
 
 import (
 	"k8s.io/apimachinery/pkg/runtime"
-	apicorev1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/errors"
 )
 
@@ -366,12 +366,12 @@ func (in *MaasMachineStatus) DeepCopyInto(out *MaasMachineStatus) {
 	}
 	if in.Addresses != nil {
 		in, out := &in.Addresses, &out.Addresses
-		*out = make([]apicorev1beta1.MachineAddress, len(*in))
+		*out = make([]clusterv1.MachineAddress, len(*in))
 		copy(*out, *in)
 	}
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
-		*out = make(apicorev1beta1.Conditions, len(*in))
+		*out = make(clusterv1.Conditions, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
@@ -493,7 +493,7 @@ func (in *Machine) DeepCopyInto(out *Machine) {
 	*out = *in
 	if in.Addresses != nil {
 		in, out := &in.Addresses, &out.Addresses
-		*out = make([]apicorev1beta1.MachineAddress, len(*in))
+		*out = make([]clusterv1.MachineAddress, len(*in))
 		copy(*out, *in)
 	}
 }
