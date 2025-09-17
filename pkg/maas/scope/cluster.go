@@ -19,6 +19,9 @@ package scope
 import (
 	"context"
 	"fmt"
+	"sync"
+	"time"
+
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -26,15 +29,13 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/controllers/remote"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
-	"sync"
-	"time"
 )
 
 const (
@@ -43,12 +44,12 @@ const (
 
 // ClusterScopeParams defines the input parameters used to create a new Scope.
 type ClusterScopeParams struct {
-	Client              client.Client
-	Logger              logr.Logger
-	Cluster             *clusterv1.Cluster
-	MaasCluster         *infrav1beta1.MaasCluster
-	ControllerName      string
-	Tracker             *remote.ClusterCacheTracker
+	Client         client.Client
+	Logger         logr.Logger
+	Cluster        *clusterv1.Cluster
+	MaasCluster    *infrav1beta1.MaasCluster
+	ControllerName string
+	// Deprecated tracker removed in CAPI v1.11; use remote.NewClusterClient on demand.
 	ClusterEventChannel chan event.GenericEvent
 }
 
@@ -58,10 +59,10 @@ type ClusterScope struct {
 	client      client.Client
 	patchHelper *patch.Helper
 
-	Cluster             *clusterv1.Cluster
-	MaasCluster         *infrav1beta1.MaasCluster
-	controllerName      string
-	tracker             *remote.ClusterCacheTracker
+	Cluster        *clusterv1.Cluster
+	MaasCluster    *infrav1beta1.MaasCluster
+	controllerName string
+	// Deprecated tracker removed in CAPI v1.11; use remote.NewClusterClient on demand.
 	clusterEventChannel chan event.GenericEvent
 }
 
@@ -80,7 +81,6 @@ func NewClusterScope(params ClusterScopeParams) (*ClusterScope, error) {
 		MaasCluster:         params.MaasCluster,
 		patchHelper:         helper,
 		controllerName:      params.ControllerName,
-		tracker:             params.Tracker,
 		clusterEventChannel: params.ClusterEventChannel,
 	}, nil
 }
@@ -89,22 +89,25 @@ func NewClusterScope(params ClusterScopeParams) (*ClusterScope, error) {
 func (s *ClusterScope) PatchObject() error {
 	// Always update the readyCondition by summarizing the state of other conditions.
 	// A step counter is added to represent progress during the provisioning process (instead we are hiding it during the deletion process).
-	conditions.SetSummary(s.MaasCluster,
-		conditions.WithConditions(
-			infrav1beta1.DNSReadyCondition,
-			infrav1beta1.APIServerAvailableCondition,
-		),
-		conditions.WithStepCounterIf(s.MaasCluster.ObjectMeta.DeletionTimestamp.IsZero()),
+	// v1.11: Use NewSummaryCondition and Set
+	summary, _ := conditions.NewSummaryCondition(s.MaasCluster, string(clusterv1.ReadyCondition),
+		conditions.ForConditionTypes{
+			string(infrav1beta1.DNSReadyCondition),
+			string(infrav1beta1.APIServerAvailableCondition),
+		},
 	)
+	if summary != nil {
+		conditions.Set(s.MaasCluster, *summary)
+	}
 
 	// Patch the object, ignoring conflicts on the conditions owned by this controller.
 	return s.patchHelper.Patch(
 		context.TODO(),
 		s.MaasCluster,
-		patch.WithOwnedConditions{Conditions: []clusterv1.ConditionType{
-			clusterv1.ReadyCondition,
-			infrav1beta1.DNSReadyCondition,
-			infrav1beta1.APIServerAvailableCondition,
+		patch.WithOwnedConditions{Conditions: []string{
+			string(clusterv1.ReadyCondition),
+			string(infrav1beta1.DNSReadyCondition),
+			string(infrav1beta1.APIServerAvailableCondition),
 		}},
 	)
 }
@@ -233,7 +236,7 @@ func (s *ClusterScope) IsAPIServerOnline() (bool, error) {
 		return false, errors.New("Cluster is deleting; abort IsAPIServerOnline")
 	}
 
-	remoteClient, err := s.tracker.GetClient(ctx, util.ObjectKey(s.Cluster))
+	remoteClient, err := remote.NewClusterClient(ctx, s.controllerName, s.client, util.ObjectKey(s.Cluster))
 	if err != nil {
 		s.V(2).Info("Waiting for online server to come online")
 		return false, nil

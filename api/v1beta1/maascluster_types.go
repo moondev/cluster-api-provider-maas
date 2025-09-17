@@ -17,8 +17,9 @@ limitations under the License.
 package v1beta1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 )
 
 const (
@@ -98,12 +99,34 @@ type MaasCluster struct {
 	Status MaasClusterStatus `json:"status,omitempty"`
 }
 
-func (in *MaasCluster) GetConditions() clusterv1.Conditions {
-	return in.Status.Conditions
+func (in *MaasCluster) GetConditions() []metav1.Condition {
+	out := make([]metav1.Condition, len(in.Status.Conditions))
+	for i := range in.Status.Conditions {
+		c := in.Status.Conditions[i]
+		out[i] = metav1.Condition{
+			Type:               string(c.Type),
+			Status:             metav1.ConditionStatus(c.Status),
+			LastTransitionTime: c.LastTransitionTime,
+			Reason:             c.Reason,
+			Message:            c.Message,
+		}
+	}
+	return out
 }
 
-func (in *MaasCluster) SetConditions(conditions clusterv1.Conditions) {
-	in.Status.Conditions = conditions
+func (in *MaasCluster) SetConditions(conditions []metav1.Condition) {
+	out := make(clusterv1.Conditions, len(conditions))
+	for i := range conditions {
+		c := conditions[i]
+		out[i] = clusterv1.Condition{
+			Type:               clusterv1.ConditionType(c.Type),
+			Status:             corev1.ConditionStatus(c.Status),
+			LastTransitionTime: c.LastTransitionTime,
+			Reason:             c.Reason,
+			Message:            c.Message,
+		}
+	}
+	in.Status.Conditions = out
 }
 
 //+kubebuilder:object:root=true

@@ -24,11 +24,12 @@ import (
 	"path"
 	"path/filepath"
 	goruntime "runtime"
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
-	webhookserver "sigs.k8s.io/controller-runtime/pkg/webhook"
 	"strconv"
 	"strings"
 	"time"
+
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	webhookserver "sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	"github.com/onsi/ginkgo"
 	"github.com/pkg/errors"
@@ -49,7 +50,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/cmd/clusterctl/log"
 	utilyaml "sigs.k8s.io/cluster-api/util/yaml"
 )
