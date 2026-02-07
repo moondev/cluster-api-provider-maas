@@ -203,7 +203,7 @@ func (r *MaasClusterReconciler) reconcileDNSAttachments(clusterScope *scope.Clus
 
 // IsControlPlaneMachine checks machine is a control plane node.
 func IsControlPlaneMachine(m *infrav1beta1.MaasMachine) bool {
-	_, ok := m.ObjectMeta.Labels[clusterv1.MachineControlPlaneLabel]
+	_, ok := m.ObjectMeta.Labels[clusterv1beta1.MachineControlPlaneLabel]
 	return ok
 }
 

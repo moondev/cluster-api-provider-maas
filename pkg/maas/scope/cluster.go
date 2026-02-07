@@ -69,10 +69,13 @@ type ClusterScope struct {
 // NewClusterScope creates a new Scope from the supplied parameters.
 // This is meant to be called for each reconcile iteration.
 func NewClusterScope(params ClusterScopeParams) (*ClusterScope, error) {
-
-	helper, err := patch.NewHelper(params.MaasCluster, params.Client)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to init patch helper")
+	var helper *patch.Helper
+	if params.MaasCluster != nil {
+		var err error
+		helper, err = patch.NewHelper(params.MaasCluster, params.Client)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to init patch helper")
+		}
 	}
 	return &ClusterScope{
 		Logger:              params.Logger,
@@ -87,6 +90,9 @@ func NewClusterScope(params ClusterScopeParams) (*ClusterScope, error) {
 
 // PatchObject persists the cluster configuration and status.
 func (s *ClusterScope) PatchObject() error {
+	if s.MaasCluster == nil || s.patchHelper == nil {
+		return nil
+	}
 	// Always update the readyCondition by summarizing the state of other conditions.
 	// A step counter is added to represent progress during the provisioning process (instead we are hiding it during the deletion process).
 	v1beta1conditions.SetSummary(s.MaasCluster,
@@ -124,6 +130,9 @@ func (s *ClusterScope) APIServerPort() int {
 
 // SetDNSName sets the Network systemID in spec.
 func (s *ClusterScope) SetDNSName(dnsName string) {
+	if s.MaasCluster == nil {
+		return
+	}
 	s.MaasCluster.Status.Network.DNSName = dnsName
 }
 
@@ -132,6 +141,10 @@ func (s *ClusterScope) SetDNSName(dnsName string) {
 func (s *ClusterScope) GetDNSName() string {
 	if !s.Cluster.Spec.ControlPlaneEndpoint.IsZero() {
 		return s.Cluster.Spec.ControlPlaneEndpoint.Host
+	}
+
+	if s.MaasCluster == nil {
+		return ""
 	}
 
 	if s.MaasCluster.Status.Network.DNSName != "" {

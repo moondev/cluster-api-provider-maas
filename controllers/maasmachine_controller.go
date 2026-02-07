@@ -105,15 +105,19 @@ func (r *MaasMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	log = log.WithValues("cluster", cluster.Name)
 
 	// Get Infra cluster
-	maasCluster := &infrav1beta1.MaasCluster{}
-	infraClusterName := client.ObjectKey{
-		Namespace: maasMachine.Namespace,
-		Name:      cluster.Spec.InfrastructureRef.Name,
-	}
+	var maasCluster *infrav1beta1.MaasCluster
+	infraIsMaas := cluster.Spec.InfrastructureRef.Kind == "MaasCluster"
+	if infraIsMaas {
+		maasCluster = &infrav1beta1.MaasCluster{}
+		infraClusterName := client.ObjectKey{
+			Namespace: maasMachine.Namespace,
+			Name:      cluster.Spec.InfrastructureRef.Name,
+		}
 
-	if err := r.Client.Get(ctx, infraClusterName, maasCluster); err != nil {
-		log.Info("MaasCluster is not available yet")
-		return ctrl.Result{}, nil
+		if err := r.Client.Get(ctx, infraClusterName, maasCluster); err != nil {
+			log.Info("MaasCluster is not available yet")
+			return ctrl.Result{}, nil
+		}
 	}
 
 	// Create the cluster scope
@@ -236,7 +240,8 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	}
 
 	infraReady := machineScope.Cluster.Status.Initialization.InfrastructureProvisioned != nil && *machineScope.Cluster.Status.Initialization.InfrastructureProvisioned
-	if !infraReady {
+	infraIsMaas := machineScope.Cluster.Spec.InfrastructureRef.Kind == "MaasCluster"
+	if !infraReady && infraIsMaas {
 		machineScope.Info("Cluster infrastructure is not ready yet")
 		v1beta1conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.WaitingForClusterInfrastructureReason, clusterv1beta2.ConditionSeverityInfo, "")
 		return ctrl.Result{}, nil
@@ -396,6 +401,10 @@ func (r *MaasMachineReconciler) resolveUserData(machineScope *scope.MachineScope
 
 func (r *MaasMachineReconciler) reconcileDNSAttachment(machineScope *scope.MachineScope, clusterScope *scope.ClusterScope, m *infrav1beta1.Machine) error {
 	if !machineScope.IsControlPlane() {
+		return nil
+	}
+	if clusterScope == nil || clusterScope.MaasCluster == nil {
+		// Hosted or external control plane: skip MAAS DNS integration.
 		return nil
 	}
 
