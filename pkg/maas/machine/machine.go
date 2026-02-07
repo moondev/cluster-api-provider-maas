@@ -1,28 +1,29 @@
 package machine
 
 import (
-	"github.com/canonical/gomaasclient/client"
-	"github.com/canonical/gomaasclient/entity"
-	"github.com/pkg/errors"
+	"context"
 
+	"github.com/pkg/errors"
+	"github.com/spectrocloud/maas-client-go/maasclient"
 	"k8s.io/klog/v2/textlogger"
 
 	infrav1beta1 "github.com/moondev/cluster-api-provider-maas/api/v1beta1"
 	"github.com/moondev/cluster-api-provider-maas/pkg/maas/scope"
+	infrautil "github.com/moondev/cluster-api-provider-maas/pkg/util"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
 // Service manages the MaaS machine
 type Service struct {
 	scope      *scope.MachineScope
-	maasClient *client.Client
+	maasClient maasclient.ClientSetInterface
 }
 
 // DNS service returns a new helper for managing a MaaS "DNS" (DNS client loadbalancing)
 func NewService(machineScope *scope.MachineScope) *Service {
 	return &Service{
 		scope:      machineScope,
-		maasClient: scope.NewMaasClient(machineScope.ClusterScope),
+		maasClient: scope.NewSpectroMaasClient(machineScope.ClusterScope),
 	}
 }
 
@@ -32,26 +33,22 @@ func (s *Service) GetMachine(systemID string) (*infrav1beta1.Machine, error) {
 		return nil, nil
 	}
 
-	params := &entity.MachinesParams{
-		ID: []string{systemID},
-	}
-
-	machines, err := s.maasClient.Machines.Get(params)
+	machine, err := s.maasClient.Machines().Machine(systemID).Get(context.Background())
 	if err != nil {
 		return nil, err
 	}
 
-	if len(machines) == 0 {
-		return nil, nil
-	}
-
-	machine := fromSDKTypeToMachine(&machines[0])
-
-	return machine, nil
+	return fromSDKTypeToMachine(machine), nil
 }
 
 func (s *Service) ReleaseMachine(systemID string) error {
-	err := s.maasClient.Machines.Release([]string{systemID}, "released by cluster-api-provider-maas")
+	if systemID == "" {
+		return nil
+	}
+
+	_, err := s.maasClient.Machines().Machine(systemID).
+		Releaser().WithComment("released by cluster-api-provider-maas").
+		Release(context.TODO())
 	if err != nil {
 		return errors.Wrapf(err, "Unable to release machine")
 	}
@@ -61,6 +58,7 @@ func (s *Service) ReleaseMachine(systemID string) error {
 
 func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, rerr error) {
 	log := textlogger.NewLogger(textlogger.NewConfig())
+	ctx := context.TODO()
 
 	mm := s.scope.MaasMachine
 
@@ -69,63 +67,62 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 		failureDomain = s.scope.Machine.Spec.FailureDomain
 	}
 
-	var m *entity.Machine
+	var m maasclient.Machine
 
 	var err error
 
 	if s.scope.GetProviderID() == "" {
 		// Allocate a new machine
-		allocateParams := &entity.MachineAllocateParams{
-			CPUCount: *mm.Spec.MinCPU,
-			Mem:      int64(*mm.Spec.MinMemoryInMB),
+		allocator := s.maasClient.Machines().Allocator()
+		if mm.Spec.MinCPU != nil {
+			allocator = allocator.WithCPUCount(*mm.Spec.MinCPU)
 		}
-
+		if mm.Spec.MinMemoryInMB != nil {
+			allocator = allocator.WithMemory(*mm.Spec.MinMemoryInMB)
+		}
 		if failureDomain != nil {
-			allocateParams.Zone = *failureDomain
+			allocator = allocator.WithZone(*failureDomain)
 		}
-
 		if mm.Spec.ResourcePool != nil {
-			allocateParams.Pool = *mm.Spec.ResourcePool
+			allocator = allocator.WithResourcePool(*mm.Spec.ResourcePool)
 		}
-
 		if len(mm.Spec.Tags) > 0 {
-			allocateParams.Tags = mm.Spec.Tags
+			allocator = allocator.WithTags(mm.Spec.Tags)
 		}
 
-		m, err = s.maasClient.Machines.Allocate(allocateParams)
+		m, err = allocator.Allocate(ctx)
 		if err != nil {
 			return nil, errors.Wrapf(err, "Unable to allocate machine")
 		}
 
-		s.scope.SetProviderID(m.SystemID, m.Zone.Name)
+		zoneName := m.ZoneName()
+		if zoneName == "" && failureDomain != nil {
+			zoneName = *failureDomain
+		}
+		s.scope.SetProviderID(m.SystemID(), zoneName)
 		err = s.scope.PatchObject()
 		if err != nil {
 			return nil, errors.Wrapf(err, "Unable to patch object")
 		}
 	} else {
 		// Get existing machine
-		params := &entity.MachinesParams{
-			ID: []string{s.scope.GetProviderID()},
+		systemID := s.scope.GetSystemID()
+		if systemID == "" {
+			providerID := s.scope.GetProviderID()
+			if providerID != "" {
+				if parsed, perr := infrautil.NewProviderID(providerID); perr == nil {
+					systemID = parsed.ID()
+				}
+			}
 		}
-		machines, err := s.maasClient.Machines.Get(params)
+		if systemID == "" {
+			return nil, errors.New("Machine not found: missing system ID")
+		}
+
+		m, err = s.maasClient.Machines().Machine(systemID).Get(ctx)
 		if err != nil {
 			return nil, errors.Wrapf(err, "Unable to get machine")
 		}
-		if len(machines) == 0 {
-			return nil, errors.New("Machine not found")
-		}
-		m = &machines[0]
-	}
-
-	// Deploy the machine with ephemeral support
-	deployParams := &entity.MachineDeployParams{
-		UserData:     userDataB64,
-		DistroSeries: mm.Spec.Image,
-	}
-
-	// Add ephemeral deployment if specified
-	if mm.Spec.Ephemeral {
-		deployParams.EphemeralDeploy = true
 	}
 
 	if mm.Spec.DeployInMemory {
@@ -141,14 +138,14 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 		return nil, errors.Wrapf(err, "Unable to deploy machine")
 	}
 
-	log.Info("Machine deployed", "systemID", deployingM.SystemID, "hostname", deployingM.Hostname)
+	log.Info("Machine deployed", "systemID", deployingM.SystemID(), "hostname", deployingM.Hostname())
 
 	machine := fromSDKTypeToMachine(deployingM)
 
 	return machine, nil
 }
 
-func fromSDKTypeToMachine(m *entity.Machine) *infrav1beta1.Machine {
+func fromSDKTypeToMachine(m maasclient.Machine) *infrav1beta1.Machine {
 
 	machine := &infrav1beta1.Machine{
 		ID:               m.SystemID(),
@@ -156,17 +153,24 @@ func fromSDKTypeToMachine(m *entity.Machine) *infrav1beta1.Machine {
 		State:            infrav1beta1.MachineState(m.State()),
 		Powered:          m.PowerState() == "on",
 		DeployedAtMemory: m.DeployedAtMemory(),
-		AvailabilityZone: m.Zone().Name(),
+		AvailabilityZone: m.ZoneName(),
 	}
 
-	// Add IP addresses if available
-	if m.IPAddresses != nil {
-		for _, addr := range m.IPAddresses {
-			machine.Addresses = append(machine.Addresses, clusterv1.MachineAddress{
-				Type:    clusterv1.MachineExternalIP,
-				Address: addr.String(),
-			})
+	if fqdn := m.FQDN(); fqdn != "" {
+		machine.Addresses = append(machine.Addresses, clusterv1.MachineAddress{
+			Type:    clusterv1.MachineExternalDNS,
+			Address: fqdn,
+		})
+	}
+
+	for _, addr := range m.IPAddresses() {
+		if addr.String() == "" {
+			continue
 		}
+		machine.Addresses = append(machine.Addresses, clusterv1.MachineAddress{
+			Type:    clusterv1.MachineExternalIP,
+			Address: addr.String(),
+		})
 	}
 
 	return machine
