@@ -25,6 +25,8 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
+	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -49,6 +51,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 )
 
+const (
+	apiServerServiceNameAnnotation = "capmaas.spectrocloud.io/apiserver-service-name"
+	apiServerIngressNameAnnotation = "capmaas.spectrocloud.io/apiserver-ingress-name"
+	enableExternalControlPlaneAnno = "capmaas.spectrocloud.io/enable-external-control-plane-endpoint"
+)
+
 // MaasClusterReconciler reconciles a MaasCluster object
 type MaasClusterReconciler struct {
 	client.Client
@@ -60,6 +68,8 @@ type MaasClusterReconciler struct {
 
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasclusters,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasclusters/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups="",resources=services;services/status,verbs=get;list;watch
+//+kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses;ingresses/status,verbs=get;list;watch
 
 // Reconcile reads that state of the cluster for a MaasCluster object and makes changes based on the state read
 // and what is in the MaasCluster.Spec
@@ -201,6 +211,92 @@ func (r *MaasClusterReconciler) reconcileDNSAttachments(clusterScope *scope.Clus
 	return nil
 }
 
+func getAnnotation(cluster *clusterv1.Cluster, maasCluster *infrav1beta1.MaasCluster, key string) string {
+	if cluster != nil {
+		if v, ok := cluster.Annotations[key]; ok {
+			return v
+		}
+	}
+	if maasCluster != nil {
+		if v, ok := maasCluster.Annotations[key]; ok {
+			return v
+		}
+	}
+	return ""
+}
+
+func isExternalEndpointEnabled(cluster *clusterv1.Cluster, maasCluster *infrav1beta1.MaasCluster) bool {
+	v := getAnnotation(cluster, maasCluster, enableExternalControlPlaneAnno)
+	return v == "true" || v == "1" || v == "yes"
+}
+
+func resolveServiceEndpoint(ctx context.Context, c client.Client, namespace, name string) (string, int, bool, error) {
+	if name == "" {
+		return "", 0, false, nil
+	}
+	var svc corev1.Service
+	if err := c.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, &svc); err != nil {
+		return "", 0, false, err
+	}
+	if svc.Spec.Type != corev1.ServiceTypeLoadBalancer {
+		return "", 0, false, nil
+	}
+	if len(svc.Status.LoadBalancer.Ingress) == 0 {
+		return "", 0, false, nil
+	}
+	addr := svc.Status.LoadBalancer.Ingress[0]
+	host := addr.Hostname
+	if host == "" {
+		host = addr.IP
+	}
+	if host == "" {
+		return "", 0, false, nil
+	}
+	port := 0
+	for _, p := range svc.Spec.Ports {
+		if p.Name == "https" || p.Port == 6443 {
+			port = int(p.Port)
+			break
+		}
+	}
+	if port == 0 && len(svc.Spec.Ports) > 0 {
+		port = int(svc.Spec.Ports[0].Port)
+	}
+	if port == 0 {
+		port = 6443
+	}
+	return host, port, true, nil
+}
+
+func resolveIngressEndpoint(ctx context.Context, c client.Client, namespace, name string) (string, int, bool, error) {
+	if name == "" {
+		return "", 0, false, nil
+	}
+	var ing networkingv1.Ingress
+	if err := c.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, &ing); err != nil {
+		return "", 0, false, err
+	}
+	host := ""
+	if len(ing.Status.LoadBalancer.Ingress) > 0 {
+		addr := ing.Status.LoadBalancer.Ingress[0]
+		host = addr.Hostname
+		if host == "" {
+			host = addr.IP
+		}
+	}
+	if host == "" && len(ing.Spec.Rules) > 0 {
+		host = ing.Spec.Rules[0].Host
+	}
+	if host == "" {
+		return "", 0, false, nil
+	}
+	port := 443
+	if len(ing.Spec.TLS) == 0 {
+		port = 80
+	}
+	return host, port, true, nil
+}
+
 // IsControlPlaneMachine checks machine is a control plane node.
 func IsControlPlaneMachine(m *infrav1beta1.MaasMachine) bool {
 	_, ok := m.ObjectMeta.Labels[clusterv1beta1.MachineControlPlaneLabel]
@@ -230,10 +326,55 @@ func (r *MaasClusterReconciler) reconcileNormal(_ context.Context, clusterScope 
 	clusterScope.Info("Reconciling MaasCluster")
 
 	maasCluster := clusterScope.MaasCluster
+	cluster := clusterScope.Cluster
 
 	// Add finalizer first if not exist to avoid the race condition between init and delete
 	if !controllerutil.ContainsFinalizer(maasCluster, infrav1beta1.ClusterFinalizer) {
 		controllerutil.AddFinalizer(maasCluster, infrav1beta1.ClusterFinalizer)
+		return ctrl.Result{}, nil
+	}
+
+	// If Cluster.ControlPlaneEndpoint is already set, honor it first.
+	if cluster.Spec.ControlPlaneEndpoint.IsValid() {
+		maasCluster.Spec.ControlPlaneEndpoint = infrav1beta1.APIEndpoint{
+			Host: cluster.Spec.ControlPlaneEndpoint.Host,
+			Port: int(cluster.Spec.ControlPlaneEndpoint.Port),
+		}
+		maasCluster.Status.Network.DNSName = cluster.Spec.ControlPlaneEndpoint.Host
+		v1beta1conditions.MarkTrue(maasCluster, infrav1beta1.DNSReadyCondition)
+		return ctrl.Result{}, nil
+	}
+
+	// Service LoadBalancer endpoint (optional, via annotation)
+	if svcName := getAnnotation(cluster, maasCluster, apiServerServiceNameAnnotation); svcName != "" {
+		host, port, ok, err := resolveServiceEndpoint(context.TODO(), r.Client, maasCluster.Namespace, svcName)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		if ok {
+			maasCluster.Spec.ControlPlaneEndpoint = infrav1beta1.APIEndpoint{Host: host, Port: port}
+			maasCluster.Status.Network.DNSName = host
+			v1beta1conditions.MarkTrue(maasCluster, infrav1beta1.DNSReadyCondition)
+			return ctrl.Result{}, nil
+		}
+	}
+
+	// Ingress endpoint (optional, via annotation)
+	if ingName := getAnnotation(cluster, maasCluster, apiServerIngressNameAnnotation); ingName != "" {
+		host, port, ok, err := resolveIngressEndpoint(context.TODO(), r.Client, maasCluster.Namespace, ingName)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		if ok {
+			maasCluster.Spec.ControlPlaneEndpoint = infrav1beta1.APIEndpoint{Host: host, Port: port}
+			maasCluster.Status.Network.DNSName = host
+			v1beta1conditions.MarkTrue(maasCluster, infrav1beta1.DNSReadyCondition)
+			return ctrl.Result{}, nil
+		}
+	}
+
+	// For non-MaaS control planes, skip MaaS DNS unless explicitly enabled.
+	if cluster.Spec.InfrastructureRef.Kind != "MaasCluster" && !isExternalEndpointEnabled(cluster, maasCluster) {
 		return ctrl.Result{}, nil
 	}
 
