@@ -1,0 +1,436 @@
+# ClusterClass showcasing cloud-config rendering and advanced variables for MaaS.
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: ClusterClass
+metadata:
+  name: maas-cloud-init-advanced
+spec:
+  infrastructure:
+    ref:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      kind: MaasClusterTemplate
+      name: maas-cloud-init-advanced-cluster-template
+  controlPlane:
+    ref:
+      apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+      kind: KubeadmControlPlaneTemplate
+      name: maas-cloud-init-advanced-control-plane-template
+    machineInfrastructure:
+      ref:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: MaasMachineTemplate
+        name: maas-cloud-init-advanced-control-plane-machinetemplate
+  workers:
+    machineDeployments:
+      - class: md-default
+        template:
+          bootstrap:
+            ref:
+              apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+              kind: KubeadmConfigTemplate
+              name: maas-cloud-init-advanced-worker-bootstrap-template
+          infrastructure:
+            ref:
+              apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+              kind: MaasMachineTemplate
+              name: maas-cloud-init-advanced-worker-machinetemplate
+  variables:
+    - name: dnsDomain
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: string
+          minLength: 4
+          maxLength: 253
+          pattern: "^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,}$"
+    - name: authorizedKeys
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: array
+          description: SSH authorized keys injected via cloud-config.
+          minItems: 1
+          maxItems: 10
+          items:
+            type: string
+            minLength: 10
+            maxLength: 8192
+            pattern: "^(ssh-(rsa|ed25519|ecdsa))\\s+.+$"
+    - name: additionalPackages
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: array
+          description: Optional OS packages installed by cloud-config.
+          maxItems: 50
+          items:
+            type: string
+            minLength: 1
+            maxLength: 128
+    - name: firstBootCommands
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: array
+          description: Commands executed by cloud-config runcmd on first boot.
+          maxItems: 50
+          items:
+            type: string
+            minLength: 1
+            maxLength: 1024
+    - name: nvidia
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: NVIDIA driver and CUDA settings.
+          properties:
+            driverBranch:
+              type: string
+              pattern: "^(production|newest|[0-9]{3})$"
+            cudaVersion:
+              type: string
+              pattern: "^[0-9]+\\.[0-9]+$"
+          required:
+            - driverBranch
+            - cudaVersion
+          additionalProperties: false
+    - name: nfs
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: NFS mount options for /data and /home.
+          properties:
+            server:
+              type: string
+              minLength: 3
+              maxLength: 255
+            dataPath:
+              type: string
+              minLength: 2
+              maxLength: 255
+              pattern: "^/.*"
+            homePath:
+              type: string
+              minLength: 2
+              maxLength: 255
+              pattern: "^/.*"
+            mountOptions:
+              type: string
+              minLength: 1
+              maxLength: 255
+            enableData:
+              type: boolean
+            enableHome:
+              type: boolean
+          required:
+            - server
+            - dataPath
+            - homePath
+            - mountOptions
+            - enableData
+            - enableHome
+          additionalProperties: false
+  patches:
+    - name: maas-cluster-dns
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            kind: MaasClusterTemplate
+            matchResources:
+              infrastructureCluster: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/dnsDomain
+              valueFrom:
+                variable: dnsDomain
+    - name: cloud-config-file
+      definitions:
+        - selector:
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+            kind: KubeadmControlPlaneTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/kubeadmConfigSpec/files
+              value:
+                - path: /etc/cloud/cloud.cfg.d/99-capmaas.cfg
+                  owner: root:root
+                  permissions: "0644"
+                  contentFrom:
+                    template: |
+                      #cloud-config
+                      ssh_authorized_keys:
+                      {{- range .authorizedKeys }}
+                        - {{ . }}
+                      {{- end }}
+                      packages:
+                      {{- if .additionalPackages }}
+                      {{- range .additionalPackages }}
+                        - {{ . }}
+                      {{- end }}
+                      {{- else }}
+                        - curl
+                      {{- end }}
+                      runcmd:
+                      {{- if .firstBootCommands }}
+                      {{- range .firstBootCommands }}
+                        - {{ . }}
+                      {{- end }}
+                      {{- else }}
+                        - echo "cloud-init ready"
+                      {{- end }}
+                      write_files:
+                        - path: /etc/profile.d/cuda.sh
+                          permissions: "0644"
+                          content: |
+                            export CUDA_VERSION={{ .nvidia.cudaVersion }}
+        - selector:
+            apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+            kind: KubeadmConfigTemplate
+            matchResources:
+              machineDeploymentClass:
+                names:
+                  - md-default
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/files
+              value:
+                - path: /etc/cloud/cloud.cfg.d/99-capmaas.cfg
+                  owner: root:root
+                  permissions: "0644"
+                  contentFrom:
+                    template: |
+                      #cloud-config
+                      ssh_authorized_keys:
+                      {{- range .authorizedKeys }}
+                        - {{ . }}
+                      {{- end }}
+                      packages:
+                      {{- if .additionalPackages }}
+                      {{- range .additionalPackages }}
+                        - {{ . }}
+                      {{- end }}
+                      {{- else }}
+                        - curl
+                      {{- end }}
+                      runcmd:
+                      {{- if .firstBootCommands }}
+                      {{- range .firstBootCommands }}
+                        - {{ . }}
+                      {{- end }}
+                      {{- else }}
+                        - echo "cloud-init ready"
+                      {{- end }}
+                      write_files:
+                        - path: /etc/profile.d/cuda.sh
+                          permissions: "0644"
+                          content: |
+                            export CUDA_VERSION={{ .nvidia.cudaVersion }}
+    - name: nfs-pre-kubeadm
+      definitions:
+        - selector:
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+            kind: KubeadmControlPlaneTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/kubeadmConfigSpec/preKubeadmCommands/-
+              valueFrom:
+                template: "if {{ .nfs.enableData }} || {{ .nfs.enableHome }}; then apt-get update && apt-get install -y nfs-common; fi"
+            - op: add
+              path: /spec/template/spec/kubeadmConfigSpec/preKubeadmCommands/-
+              valueFrom:
+                template: "if {{ .nfs.enableData }}; then mkdir -p /data && echo '{{ .nfs.server }}:{{ .nfs.dataPath }} /data nfs {{ .nfs.mountOptions }} 0 0' >> /etc/fstab; fi"
+            - op: add
+              path: /spec/template/spec/kubeadmConfigSpec/preKubeadmCommands/-
+              valueFrom:
+                template: "if {{ .nfs.enableHome }}; then mkdir -p /home && echo '{{ .nfs.server }}:{{ .nfs.homePath }} /home nfs {{ .nfs.mountOptions }} 0 0' >> /etc/fstab; fi"
+            - op: add
+              path: /spec/template/spec/kubeadmConfigSpec/preKubeadmCommands/-
+              value: "mount -a"
+        - selector:
+            apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+            kind: KubeadmConfigTemplate
+            matchResources:
+              machineDeploymentClass:
+                names:
+                  - md-default
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/preKubeadmCommands/-
+              valueFrom:
+                template: "if {{ .nfs.enableData }} || {{ .nfs.enableHome }}; then apt-get update && apt-get install -y nfs-common; fi"
+            - op: add
+              path: /spec/template/spec/preKubeadmCommands/-
+              valueFrom:
+                template: "if {{ .nfs.enableData }}; then mkdir -p /data && echo '{{ .nfs.server }}:{{ .nfs.dataPath }} /data nfs {{ .nfs.mountOptions }} 0 0' >> /etc/fstab; fi"
+            - op: add
+              path: /spec/template/spec/preKubeadmCommands/-
+              valueFrom:
+                template: "if {{ .nfs.enableHome }}; then mkdir -p /home && echo '{{ .nfs.server }}:{{ .nfs.homePath }} /home nfs {{ .nfs.mountOptions }} 0 0' >> /etc/fstab; fi"
+            - op: add
+              path: /spec/template/spec/preKubeadmCommands/-
+              value: "mount -a"
+    - name: nvidia-post-kubeadm
+      definitions:
+        - selector:
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+            kind: KubeadmControlPlaneTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/kubeadmConfigSpec/postKubeadmCommands/-
+              valueFrom:
+                template: "apt-get update && apt-get install -y build-essential dkms"
+            - op: add
+              path: /spec/template/spec/kubeadmConfigSpec/postKubeadmCommands/-
+              valueFrom:
+                template: "ubuntu-drivers install {{ .nvidia.driverBranch }} || true"
+            - op: add
+              path: /spec/template/spec/kubeadmConfigSpec/postKubeadmCommands/-
+              valueFrom:
+                template: "curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb -o /tmp/cuda-keyring.deb"
+            - op: add
+              path: /spec/template/spec/kubeadmConfigSpec/postKubeadmCommands/-
+              valueFrom:
+                template: "dpkg -i /tmp/cuda-keyring.deb && apt-get update && apt-get install -y cuda-{{ .nvidia.cudaVersion }}"
+        - selector:
+            apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+            kind: KubeadmConfigTemplate
+            matchResources:
+              machineDeploymentClass:
+                names:
+                  - md-default
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/postKubeadmCommands/-
+              valueFrom:
+                template: "apt-get update && apt-get install -y build-essential dkms"
+            - op: add
+              path: /spec/template/spec/postKubeadmCommands/-
+              valueFrom:
+                template: "ubuntu-drivers install {{ .nvidia.driverBranch }} || true"
+            - op: add
+              path: /spec/template/spec/postKubeadmCommands/-
+              valueFrom:
+                template: "curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb -o /tmp/cuda-keyring.deb"
+            - op: add
+              path: /spec/template/spec/postKubeadmCommands/-
+              valueFrom:
+                template: "dpkg -i /tmp/cuda-keyring.deb && apt-get update && apt-get install -y cuda-{{ .nvidia.cudaVersion }}"
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasClusterTemplate
+metadata:
+  name: maas-cloud-init-advanced-cluster-template
+spec:
+  template:
+    spec: {}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: maas-cloud-init-advanced-control-plane-machinetemplate
+spec:
+  template:
+    spec:
+      minCPU: 4
+      minMemory: 8192
+      image: ubuntu-2204
+      resourcePool: default
+      tags: [ "gpu" ]
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: maas-cloud-init-advanced-worker-machinetemplate
+spec:
+  template:
+    spec:
+      minCPU: 4
+      minMemory: 8192
+      image: ubuntu-2204
+      resourcePool: default
+      tags: [ "gpu" ]
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: KubeadmControlPlaneTemplate
+metadata:
+  name: maas-cloud-init-advanced-control-plane-template
+spec:
+  template:
+    spec:
+      replicas: 3
+      version: v1.31.0
+      machineTemplate:
+        infrastructureRef:
+          apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+          kind: MaasMachineTemplate
+          name: maas-cloud-init-advanced-control-plane-machinetemplate
+      kubeadmConfigSpec:
+        initConfiguration:
+          nodeRegistration:
+            kubeletExtraArgs:
+              cloud-provider: external
+        joinConfiguration:
+          nodeRegistration:
+            kubeletExtraArgs:
+              cloud-provider: external
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: KubeadmConfigTemplate
+metadata:
+  name: maas-cloud-init-advanced-worker-bootstrap-template
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+            cloud-provider: external
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: maas-cloud-init-advanced
+spec:
+  topology:
+    class: maas-cloud-init-advanced
+    version: v1.31.0
+    controlPlane:
+      metadata: {}
+    workers:
+      machineDeployments:
+        - class: md-default
+          name: md-0
+          replicas: 3
+    variables:
+      - name: dnsDomain
+        value: "example.internal"
+      - name: authorizedKeys
+        value:
+          - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMX6F1X6A0D1kB0oWcK6bXasR3X7pI8s3V5xZfP1k7 user@example"
+      - name: additionalPackages
+        value:
+          - nfs-common
+          - jq
+      - name: firstBootCommands
+        value:
+          - "echo first boot"
+          - "systemctl enable --now chronyd"
+      - name: nvidia
+        value:
+          driverBranch: "535"
+          cudaVersion: "12.4"
+      - name: nfs
+        value:
+          server: "10.0.0.10"
+          dataPath: "/export/data"
+          homePath: "/export/home"
+          mountOptions: "rw,hard,intr"
+          enableData: true
+          enableHome: false

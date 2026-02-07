@@ -1,0 +1,88 @@
+# ClusterClass-less template for mixed infra:
+# - External/hosted control plane (non-MaaS)
+# - MaaS workers only
+# - Endpoint resolved from Service
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: ${CLUSTER_NAME}
+  namespace: ${NAMESPACE}
+  annotations:
+    capmaas.spectrocloud.io/enable-external-control-plane-endpoint: "true"
+    capmaas.spectrocloud.io/apiserver-service-name: ${APISERVER_SERVICE_NAME}
+spec:
+  clusterNetwork: {}
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: MaasCluster
+    name: ${CLUSTER_NAME}
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: HostedControlPlane
+    name: ${CLUSTER_NAME}-hcp
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasCluster
+metadata:
+  name: ${CLUSTER_NAME}
+  namespace: ${NAMESPACE}
+spec:
+  dnsDomain: ${MAAS_DNS_DOMAIN}
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: KubeadmConfigTemplate
+metadata:
+  name: ${CLUSTER_NAME}-md-0-bootstrap
+  namespace: ${NAMESPACE}
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+            cloud-provider: external
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: ${CLUSTER_NAME}-md-0-machinetemplate
+  namespace: ${NAMESPACE}
+spec:
+  template:
+    spec:
+      minCPU: ${WORKER_MACHINE_MINCPU}
+      minMemory: ${WORKER_MACHINE_MINMEMORY}
+      image: ${WORKER_MACHINE_IMAGE}
+      resourcePool: ${WORKER_MACHINE_RESOURCEPOOL}
+      tags: [${WORKER_MACHINE_TAG}]
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineDeployment
+metadata:
+  name: ${CLUSTER_NAME}-md-0
+  namespace: ${NAMESPACE}
+  labels:
+    cluster.x-k8s.io/cluster-name: ${CLUSTER_NAME}
+spec:
+  clusterName: ${CLUSTER_NAME}
+  replicas: ${WORKER_MACHINE_COUNT}
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: ${CLUSTER_NAME}
+      cluster.x-k8s.io/deployment-name: ${CLUSTER_NAME}-md-0
+  template:
+    metadata:
+      labels:
+        cluster.x-k8s.io/cluster-name: ${CLUSTER_NAME}
+        cluster.x-k8s.io/deployment-name: ${CLUSTER_NAME}-md-0
+    spec:
+      version: ${KUBERNETES_VERSION}
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          kind: KubeadmConfigTemplate
+          name: ${CLUSTER_NAME}-md-0-bootstrap
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: MaasMachineTemplate
+        name: ${CLUSTER_NAME}-md-0-machinetemplate

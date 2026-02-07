@@ -1,0 +1,180 @@
+# ClusterClass-less template with multiple worker pools.
+# Demonstrates separate resource pools, images, tags, and failure domains per pool.
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasCluster
+metadata:
+  name: ${CLUSTER_NAME}
+  namespace: ${NAMESPACE}
+spec:
+  dnsDomain: ${MAAS_DNS_DOMAIN}
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: ${CLUSTER_NAME}
+  namespace: ${NAMESPACE}
+spec:
+  clusterNetwork: {}
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: KubeadmControlPlane
+    name: ${CLUSTER_NAME}-control-plane
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: MaasCluster
+    name: ${CLUSTER_NAME}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: ${CLUSTER_NAME}-control-plane
+  namespace: ${NAMESPACE}
+spec:
+  template:
+    spec:
+      minCPU: ${CONTROL_PLANE_MACHINE_MINCPU}
+      minMemory: ${CONTROL_PLANE_MACHINE_MINMEMORY}
+      image: ${CONTROL_PLANE_MACHINE_IMAGE}
+      resourcePool: ${CONTROL_PLANE_MACHINE_RESOURCEPOOL}
+      tags: [${CONTROL_PLANE_MACHINE_TAG}]
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: KubeadmControlPlane
+metadata:
+  name: ${CLUSTER_NAME}-control-plane
+  namespace: ${NAMESPACE}
+spec:
+  replicas: ${CONTROL_PLANE_MACHINE_COUNT}
+  version: ${KUBERNETES_VERSION}
+  machineTemplate:
+    infrastructureRef:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      kind: MaasMachineTemplate
+      name: ${CLUSTER_NAME}-control-plane
+  kubeadmConfigSpec:
+    initConfiguration:
+      nodeRegistration:
+        kubeletExtraArgs:
+          cloud-provider: external
+    joinConfiguration:
+      nodeRegistration:
+        kubeletExtraArgs:
+          cloud-provider: external
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: KubeadmConfigTemplate
+metadata:
+  name: ${CLUSTER_NAME}-md-0-bootstrap
+  namespace: ${NAMESPACE}
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+            cloud-provider: external
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: KubeadmConfigTemplate
+metadata:
+  name: ${CLUSTER_NAME}-md-1-bootstrap
+  namespace: ${NAMESPACE}
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+            cloud-provider: external
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: ${CLUSTER_NAME}-md-0-machinetemplate
+  namespace: ${NAMESPACE}
+spec:
+  template:
+    spec:
+      minCPU: ${WORKER_POOL_1_MINCPU}
+      minMemory: ${WORKER_POOL_1_MINMEMORY}
+      image: ${WORKER_POOL_1_IMAGE}
+      resourcePool: ${WORKER_POOL_1_RESOURCEPOOL}
+      tags: [${WORKER_POOL_1_TAG}]
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: ${CLUSTER_NAME}-md-1-machinetemplate
+  namespace: ${NAMESPACE}
+spec:
+  template:
+    spec:
+      minCPU: ${WORKER_POOL_2_MINCPU}
+      minMemory: ${WORKER_POOL_2_MINMEMORY}
+      image: ${WORKER_POOL_2_IMAGE}
+      resourcePool: ${WORKER_POOL_2_RESOURCEPOOL}
+      tags: [${WORKER_POOL_2_TAG}]
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineDeployment
+metadata:
+  name: ${CLUSTER_NAME}-md-0
+  namespace: ${NAMESPACE}
+  labels:
+    cluster.x-k8s.io/cluster-name: ${CLUSTER_NAME}
+spec:
+  clusterName: ${CLUSTER_NAME}
+  replicas: ${WORKER_POOL_1_COUNT}
+  failureDomain: ${WORKER_POOL_1_FAILURE_DOMAIN}
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: ${CLUSTER_NAME}
+      cluster.x-k8s.io/deployment-name: ${CLUSTER_NAME}-md-0
+  template:
+    metadata:
+      labels:
+        cluster.x-k8s.io/cluster-name: ${CLUSTER_NAME}
+        cluster.x-k8s.io/deployment-name: ${CLUSTER_NAME}-md-0
+    spec:
+      version: ${KUBERNETES_VERSION}
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          kind: KubeadmConfigTemplate
+          name: ${CLUSTER_NAME}-md-0-bootstrap
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: MaasMachineTemplate
+        name: ${CLUSTER_NAME}-md-0-machinetemplate
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineDeployment
+metadata:
+  name: ${CLUSTER_NAME}-md-1
+  namespace: ${NAMESPACE}
+  labels:
+    cluster.x-k8s.io/cluster-name: ${CLUSTER_NAME}
+spec:
+  clusterName: ${CLUSTER_NAME}
+  replicas: ${WORKER_POOL_2_COUNT}
+  failureDomain: ${WORKER_POOL_2_FAILURE_DOMAIN}
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: ${CLUSTER_NAME}
+      cluster.x-k8s.io/deployment-name: ${CLUSTER_NAME}-md-1
+  template:
+    metadata:
+      labels:
+        cluster.x-k8s.io/cluster-name: ${CLUSTER_NAME}
+        cluster.x-k8s.io/deployment-name: ${CLUSTER_NAME}-md-1
+    spec:
+      version: ${KUBERNETES_VERSION}
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          kind: KubeadmConfigTemplate
+          name: ${CLUSTER_NAME}-md-1-bootstrap
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: MaasMachineTemplate
+        name: ${CLUSTER_NAME}-md-1-machinetemplate
