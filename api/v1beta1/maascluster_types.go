@@ -18,7 +18,8 @@ package v1beta1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	clusterv1beta2 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 )
 
 const (
@@ -60,7 +61,7 @@ type MaasClusterStatus struct {
 
 	// Conditions defines current service state of the MaasCluster.
 	// +optional
-	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
+	Conditions clusterv1beta2.Conditions `json:"conditions,omitempty"`
 }
 
 // Network encapsulates the Cluster Network
@@ -98,11 +99,21 @@ type MaasCluster struct {
 	Status MaasClusterStatus `json:"status,omitempty"`
 }
 
-func (in *MaasCluster) GetConditions() clusterv1.Conditions {
+func (in *MaasCluster) GetConditions() clusterv1beta2.Conditions {
 	return in.Status.Conditions
 }
 
-func (in *MaasCluster) SetConditions(conditions clusterv1.Conditions) {
+func (in *MaasCluster) SetConditions(conditions clusterv1beta2.Conditions) {
+	in.Status.Conditions = conditions
+}
+
+// GetV1Beta1Conditions returns the set of conditions for this object.
+func (in *MaasCluster) GetV1Beta1Conditions() clusterv1beta2.Conditions {
+	return in.Status.Conditions
+}
+
+// SetV1Beta1Conditions sets the conditions on this object.
+func (in *MaasCluster) SetV1Beta1Conditions(conditions clusterv1beta2.Conditions) {
 	in.Status.Conditions = conditions
 }
 

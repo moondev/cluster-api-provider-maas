@@ -27,11 +27,13 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/pointer"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
+	clusterv1beta2 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/controllers/remote"
 	capierrors "sigs.k8s.io/cluster-api/errors"
 	"sigs.k8s.io/cluster-api/util"
-	"sigs.k8s.io/cluster-api/util/conditions"
+	v1beta1conditions "sigs.k8s.io/cluster-api/util/conditions/deprecated/v1beta1"
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -45,8 +47,6 @@ type MachineScopeParams struct {
 	Machine        *clusterv1.Machine
 	MaasMachine    *infrav1beta1.MaasMachine
 	ControllerName string
-
-	Tracker *remote.ClusterCacheTracker
 }
 
 // MachineScope defines the basic context for an actuator to operate upon.
@@ -62,7 +62,6 @@ type MachineScope struct {
 	MaasMachine *infrav1beta1.MaasMachine
 
 	controllerName string
-	tracker        *remote.ClusterCacheTracker
 }
 
 // NewMachineScope creates a new Scope from the supplied parameters.
@@ -81,7 +80,6 @@ func NewMachineScope(params MachineScopeParams) (*MachineScope, error) {
 		ClusterScope:   params.ClusterScope,
 		patchHelper:    helper,
 		client:         params.Client,
-		tracker:        params.Tracker,
 		controllerName: params.ControllerName,
 	}, nil
 }
@@ -89,7 +87,7 @@ func NewMachineScope(params MachineScopeParams) (*MachineScope, error) {
 // PatchObject persists the machine configuration and status.
 func (m *MachineScope) PatchObject() error {
 
-	applicableConditions := []clusterv1.ConditionType{
+	applicableConditions := []clusterv1beta2.ConditionType{
 		infrav1beta1.MachineDeployedCondition,
 	}
 
@@ -98,17 +96,17 @@ func (m *MachineScope) PatchObject() error {
 	}
 	// Always update the readyCondition by summarizing the state of other conditions.
 	// A step counter is added to represent progress during the provisioning process (instead we are hiding it during the deletion process).
-	conditions.SetSummary(m.MaasMachine,
-		conditions.WithConditions(applicableConditions...),
-		conditions.WithStepCounterIf(m.MaasMachine.ObjectMeta.DeletionTimestamp.IsZero()),
+	v1beta1conditions.SetSummary(m.MaasMachine,
+		v1beta1conditions.WithConditions(applicableConditions...),
+		v1beta1conditions.WithStepCounterIf(m.MaasMachine.ObjectMeta.DeletionTimestamp.IsZero()),
 	)
 
 	// Patch the object, ignoring conflicts on the conditions owned by this controller.
 	return m.patchHelper.Patch(
 		context.TODO(),
 		m.MaasMachine,
-		patch.WithOwnedConditions{Conditions: []clusterv1.ConditionType{
-			clusterv1.ReadyCondition,
+		patch.WithOwnedV1Beta1Conditions{Conditions: []clusterv1beta2.ConditionType{
+			clusterv1beta2.ConditionType(clusterv1beta1.ReadyCondition),
 			infrav1beta1.MachineDeployedCondition,
 		}},
 	)
@@ -120,7 +118,7 @@ func (m *MachineScope) Close() error {
 }
 
 // SetAddresses sets the MAAS Machine address status.
-func (m *MachineScope) SetAddresses(addrs []clusterv1.MachineAddress) {
+func (m *MachineScope) SetAddresses(addrs []clusterv1beta1.MachineAddress) {
 	m.MaasMachine.Status.Addresses = addrs
 }
 
@@ -151,12 +149,16 @@ func (m *MachineScope) SetFailureReason(v capierrors.MachineStatusError) {
 
 // IsControlPlane returns true if the machine is a control plane.
 func (m *MachineScope) IsControlPlane() bool {
-	return util.IsControlPlaneMachine(m.Machine)
+	if m.Machine == nil {
+		return false
+	}
+	_, ok := m.Machine.ObjectMeta.Labels[clusterv1beta1.MachineControlPlaneLabel]
+	return ok
 }
 
 // Role returns the machine role from the labels.
 func (m *MachineScope) Role() string {
-	if util.IsControlPlaneMachine(m.Machine) {
+	if m.IsControlPlane() {
 		return "control-plane"
 	}
 	return "node"
@@ -266,7 +268,7 @@ func (m *MachineScope) GetRawBootstrapData() ([]byte, error) {
 // SetNodeProviderID patches the node with the ID
 func (m *MachineScope) SetNodeProviderID() error {
 	ctx := context.TODO()
-	remoteClient, err := m.tracker.GetClient(ctx, util.ObjectKey(m.Cluster))
+	remoteClient, err := remote.NewClusterClient(ctx, m.controllerName, m.client, util.ObjectKey(m.Cluster))
 	if err != nil {
 		return err
 	}

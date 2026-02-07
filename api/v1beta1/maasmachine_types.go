@@ -18,7 +18,8 @@ package v1beta1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	clusterv1beta2 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/errors"
 )
 
@@ -92,7 +93,7 @@ type MaasMachineStatus struct {
 	Addresses []clusterv1.MachineAddress `json:"addresses,omitempty"`
 
 	// Conditions defines current service state of the MaasMachine.
-	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
+	Conditions clusterv1beta2.Conditions `json:"conditions,omitempty"`
 
 	// FailureReason will be set in the event that there is a terminal problem
 	// reconciling the Machine and will contain a succinct value suitable
@@ -119,11 +120,21 @@ type MaasMachine struct {
 	Status MaasMachineStatus `json:"status,omitempty"`
 }
 
-func (c *MaasMachine) GetConditions() clusterv1.Conditions {
+func (c *MaasMachine) GetConditions() clusterv1beta2.Conditions {
 	return c.Status.Conditions
 }
 
-func (c *MaasMachine) SetConditions(conditions clusterv1.Conditions) {
+func (c *MaasMachine) SetConditions(conditions clusterv1beta2.Conditions) {
+	c.Status.Conditions = conditions
+}
+
+// GetV1Beta1Conditions returns the set of conditions for this object.
+func (c *MaasMachine) GetV1Beta1Conditions() clusterv1beta2.Conditions {
+	return c.Status.Conditions
+}
+
+// SetV1Beta1Conditions sets the conditions on this object.
+func (c *MaasMachine) SetV1Beta1Conditions(conditions clusterv1beta2.Conditions) {
 	c.Status.Conditions = conditions
 }
 

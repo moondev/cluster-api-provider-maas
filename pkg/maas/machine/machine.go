@@ -10,7 +10,7 @@ import (
 	infrav1beta1 "github.com/moondev/cluster-api-provider-maas/api/v1beta1"
 	"github.com/moondev/cluster-api-provider-maas/pkg/maas/scope"
 	infrautil "github.com/moondev/cluster-api-provider-maas/pkg/util"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 )
 
 // Service manages the MaaS machine
@@ -63,8 +63,11 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 	mm := s.scope.MaasMachine
 
 	failureDomain := mm.Spec.FailureDomain
-	if failureDomain == nil {
-		failureDomain = s.scope.Machine.Spec.FailureDomain
+	if failureDomain == nil && s.scope.Machine != nil {
+		if s.scope.Machine.Spec.FailureDomain != "" {
+			fd := s.scope.Machine.Spec.FailureDomain
+			failureDomain = &fd
+		}
 	}
 
 	var m maasclient.Machine

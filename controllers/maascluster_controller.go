@@ -28,10 +28,11 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	"sigs.k8s.io/cluster-api/controllers/remote"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
+	clusterv1beta2 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/util"
-	"sigs.k8s.io/cluster-api/util/conditions"
+	v1beta1conditions "sigs.k8s.io/cluster-api/util/conditions/deprecated/v1beta1"
 	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -55,7 +56,6 @@ type MaasClusterReconciler struct {
 	Scheme              *runtime.Scheme
 	Recorder            record.EventRecorder
 	GenericEventChannel chan event.GenericEvent
-	Tracker             *remote.ClusterCacheTracker
 }
 
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasclusters,verbs=get;list;watch;create;update;patch;delete
@@ -92,7 +92,6 @@ func (r *MaasClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		MaasCluster:         maasCluster,
 		ClusterEventChannel: r.GenericEventChannel,
 		ControllerName:      "maascluster",
-		Tracker:             r.Tracker,
 	})
 	if err != nil {
 		return reconcile.Result{}, errors.Errorf("failed to create scope: %+v", err)
@@ -108,9 +107,9 @@ func (r *MaasClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Support FailureDomains
 	// In cloud providers this would likely look up which failure domains are supported and set the status appropriately.
 	// so kCP will distribute the CPs across multiple failure domains
-	failureDomains := make(clusterv1.FailureDomains)
+	failureDomains := make(clusterv1beta1.FailureDomains)
 	for _, az := range maasCluster.Spec.FailureDomains {
-		failureDomains[az] = clusterv1.FailureDomainSpec{
+		failureDomains[az] = clusterv1beta1.FailureDomainSpec{
 			ControlPlane: true,
 		}
 	}
@@ -220,7 +219,7 @@ func IsRunning(m *infrav1beta1.MaasMachine) bool {
 
 func getExternalMachineIP(machine *infrav1beta1.MaasMachine) string {
 	for _, i := range machine.Status.Addresses {
-		if i.Type == clusterv1.MachineExternalIP {
+		if i.Type == clusterv1beta1.MachineExternalIP {
 			return i.Address
 		}
 	}
@@ -242,12 +241,12 @@ func (r *MaasClusterReconciler) reconcileNormal(_ context.Context, clusterScope 
 
 	if err := dnsService.ReconcileDNS(); err != nil {
 		clusterScope.Error(err, "failed to reconcile load balancer")
-		conditions.MarkFalse(maasCluster, infrav1beta1.DNSReadyCondition, infrav1beta1.DNSFailedReason, clusterv1.ConditionSeverityError, "%v", err)
+		v1beta1conditions.MarkFalse(maasCluster, infrav1beta1.DNSReadyCondition, infrav1beta1.DNSFailedReason, clusterv1beta2.ConditionSeverityError, "%v", err)
 		return reconcile.Result{}, err
 	}
 
 	if maasCluster.Status.Network.DNSName == "" {
-		conditions.MarkFalse(maasCluster, infrav1beta1.DNSReadyCondition, infrav1beta1.WaitForDNSNameReason, clusterv1.ConditionSeverityInfo, "")
+		v1beta1conditions.MarkFalse(maasCluster, infrav1beta1.DNSReadyCondition, infrav1beta1.WaitForDNSNameReason, clusterv1beta2.ConditionSeverityInfo, "")
 		clusterScope.Info("Waiting on API server DNS name")
 		return reconcile.Result{RequeueAfter: 15 * time.Second}, nil
 	}
@@ -260,7 +259,7 @@ func (r *MaasClusterReconciler) reconcileNormal(_ context.Context, clusterScope 
 	maasCluster.Status.Ready = true
 
 	// Mark the maasCluster ready
-	conditions.MarkTrue(maasCluster, infrav1beta1.DNSReadyCondition)
+	v1beta1conditions.MarkTrue(maasCluster, infrav1beta1.DNSReadyCondition)
 
 	if err := r.reconcileDNSAttachments(clusterScope, dnsService); err != nil {
 		if errors.Is(err, ErrRequeueDNS) {
@@ -275,11 +274,11 @@ func (r *MaasClusterReconciler) reconcileNormal(_ context.Context, clusterScope 
 
 	clusterScope.ReconcileMaasClusterWhenAPIServerIsOnline()
 	if k, _ := clusterScope.IsAPIServerOnline(); !k {
-		conditions.MarkFalse(maasCluster, infrav1beta1.APIServerAvailableCondition, infrav1beta1.APIServerNotReadyReason, clusterv1.ConditionSeverityWarning, "")
+		v1beta1conditions.MarkFalse(maasCluster, infrav1beta1.APIServerAvailableCondition, infrav1beta1.APIServerNotReadyReason, clusterv1beta2.ConditionSeverityWarning, "")
 		return ctrl.Result{}, nil
 	}
 
-	conditions.MarkTrue(maasCluster, infrav1beta1.APIServerAvailableCondition)
+	v1beta1conditions.MarkTrue(maasCluster, infrav1beta1.APIServerAvailableCondition)
 	clusterScope.Info("API Server is available")
 
 	return ctrl.Result{}, nil

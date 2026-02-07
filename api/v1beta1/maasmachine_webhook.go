@@ -17,14 +17,15 @@ limitations under the License.
 package v1beta1
 
 import (
+	"context"
 	"fmt"
+
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 )
 
 // log is for logging in this package.
@@ -40,42 +41,62 @@ func (r *MaasMachine) SetupWebhookWithManager(mgr ctrl.Manager) error {
 //+kubebuilder:webhook:verbs=create;update,path=/validate-infrastructure-cluster-x-k8s-io-v1beta1-maasmachine,mutating=false,failurePolicy=fail,groups=infrastructure.cluster.x-k8s.io,resources=maasmachines,versions=v1beta1,name=vmaasmachine.kb.io,sideEffects=None,admissionReviewVersions=v1beta1;v1
 
 var (
-	_ webhook.Defaulter = &MaasMachine{}
-	_ webhook.Validator = &MaasMachine{}
+	_ admission.CustomDefaulter = &MaasMachine{}
+	_ admission.CustomValidator = &MaasMachine{}
 )
 
-// Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *MaasMachine) Default() {
-	maasmachinelog.Info("default", "name", r.Name)
+// Default implements admission.CustomDefaulter so a webhook will be registered for the type
+func (r *MaasMachine) Default(_ context.Context, obj runtime.Object) error {
+	maasMachine, ok := obj.(*MaasMachine)
+	if !ok {
+		return apierrors.NewBadRequest(fmt.Sprintf("expected a MaasMachine but got a %T", obj))
+	}
+	maasmachinelog.Info("default", "name", maasMachine.Name)
+	return nil
 }
 
-// ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *MaasMachine) ValidateCreate() (admission.Warnings, error) {
-	maasmachinelog.Info("validate create", "name", r.Name)
+// ValidateCreate implements admission.CustomValidator so a webhook will be registered for the type
+func (r *MaasMachine) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
+	maasMachine, ok := obj.(*MaasMachine)
+	if !ok {
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected a MaasMachine but got a %T", obj))
+	}
+	maasmachinelog.Info("validate create", "name", maasMachine.Name)
 	return nil, nil
 }
 
-// ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *MaasMachine) ValidateDelete() (admission.Warnings, error) {
-	maasmachinelog.Info("validate delete", "name", r.Name)
+// ValidateDelete implements admission.CustomValidator so a webhook will be registered for the type
+func (r *MaasMachine) ValidateDelete(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
+	maasMachine, ok := obj.(*MaasMachine)
+	if !ok {
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected a MaasMachine but got a %T", obj))
+	}
+	maasmachinelog.Info("validate delete", "name", maasMachine.Name)
 	return nil, nil
 }
 
-// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *MaasMachine) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
-	maasmachinelog.Info("validate update", "name", r.Name)
-	oldM := old.(*MaasMachine)
+// ValidateUpdate implements admission.CustomValidator so a webhook will be registered for the type
+func (r *MaasMachine) ValidateUpdate(_ context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+	oldM, ok := oldObj.(*MaasMachine)
+	if !ok {
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected a MaasMachine but got a %T", oldObj))
+	}
+	maasMachine, ok := newObj.(*MaasMachine)
+	if !ok {
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected a MaasMachine but got a %T", newObj))
+	}
+	maasmachinelog.Info("validate update", "name", maasMachine.Name)
 
-	if r.Spec.Image != oldM.Spec.Image {
-		return nil, apierrors.NewBadRequest(fmt.Sprintf("maas machine image change is not allowed, old=%s, new=%s", oldM.Spec.Image, r.Spec.Image))
+	if maasMachine.Spec.Image != oldM.Spec.Image {
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("maas machine image change is not allowed, old=%s, new=%s", oldM.Spec.Image, maasMachine.Spec.Image))
 	}
 
-	if *r.Spec.MinCPU != *oldM.Spec.MinCPU {
-		return nil, apierrors.NewBadRequest(fmt.Sprintf("maas machine min cpu count change is not allowed, old=%d, new=%d", oldM.Spec.MinCPU, r.Spec.MinCPU))
+	if *maasMachine.Spec.MinCPU != *oldM.Spec.MinCPU {
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("maas machine min cpu count change is not allowed, old=%d, new=%d", oldM.Spec.MinCPU, maasMachine.Spec.MinCPU))
 	}
 
-	if *r.Spec.MinMemoryInMB != *oldM.Spec.MinMemoryInMB {
-		return nil, apierrors.NewBadRequest(fmt.Sprintf("maas machine min memory change is not allowed, old=%d MB, new=%d MB", oldM.Spec.MinMemoryInMB, r.Spec.MinMemoryInMB))
+	if *maasMachine.Spec.MinMemoryInMB != *oldM.Spec.MinMemoryInMB {
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("maas machine min memory change is not allowed, old=%d MB, new=%d MB", oldM.Spec.MinMemoryInMB, maasMachine.Spec.MinMemoryInMB))
 	}
 	return nil, nil
 }
