@@ -29,10 +29,12 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
+	clusterv1beta2 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/controllers/remote"
 	"sigs.k8s.io/cluster-api/util"
-	"sigs.k8s.io/cluster-api/util/conditions"
+	v1beta1conditions "sigs.k8s.io/cluster-api/util/conditions/deprecated/v1beta1"
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -49,7 +51,6 @@ type ClusterScopeParams struct {
 	Cluster             *clusterv1.Cluster
 	MaasCluster         *infrav1beta1.MaasCluster
 	ControllerName      string
-	Tracker             *remote.ClusterCacheTracker
 	ClusterEventChannel chan event.GenericEvent
 }
 
@@ -62,17 +63,19 @@ type ClusterScope struct {
 	Cluster             *clusterv1.Cluster
 	MaasCluster         *infrav1beta1.MaasCluster
 	controllerName      string
-	tracker             *remote.ClusterCacheTracker
 	clusterEventChannel chan event.GenericEvent
 }
 
 // NewClusterScope creates a new Scope from the supplied parameters.
 // This is meant to be called for each reconcile iteration.
 func NewClusterScope(params ClusterScopeParams) (*ClusterScope, error) {
-
-	helper, err := patch.NewHelper(params.MaasCluster, params.Client)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to init patch helper")
+	var helper *patch.Helper
+	if params.MaasCluster != nil {
+		var err error
+		helper, err = patch.NewHelper(params.MaasCluster, params.Client)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to init patch helper")
+		}
 	}
 	return &ClusterScope{
 		Logger:              params.Logger,
@@ -81,29 +84,31 @@ func NewClusterScope(params ClusterScopeParams) (*ClusterScope, error) {
 		MaasCluster:         params.MaasCluster,
 		patchHelper:         helper,
 		controllerName:      params.ControllerName,
-		tracker:             params.Tracker,
 		clusterEventChannel: params.ClusterEventChannel,
 	}, nil
 }
 
 // PatchObject persists the cluster configuration and status.
 func (s *ClusterScope) PatchObject() error {
+	if s.MaasCluster == nil || s.patchHelper == nil {
+		return nil
+	}
 	// Always update the readyCondition by summarizing the state of other conditions.
 	// A step counter is added to represent progress during the provisioning process (instead we are hiding it during the deletion process).
-	conditions.SetSummary(s.MaasCluster,
-		conditions.WithConditions(
+	v1beta1conditions.SetSummary(s.MaasCluster,
+		v1beta1conditions.WithConditions(
 			infrav1beta1.DNSReadyCondition,
 			infrav1beta1.APIServerAvailableCondition,
 		),
-		conditions.WithStepCounterIf(s.MaasCluster.ObjectMeta.DeletionTimestamp.IsZero()),
+		v1beta1conditions.WithStepCounterIf(s.MaasCluster.ObjectMeta.DeletionTimestamp.IsZero()),
 	)
 
 	// Patch the object, ignoring conflicts on the conditions owned by this controller.
 	return s.patchHelper.Patch(
 		context.TODO(),
 		s.MaasCluster,
-		patch.WithOwnedConditions{Conditions: []clusterv1.ConditionType{
-			clusterv1.ReadyCondition,
+		patch.WithOwnedV1Beta1Conditions{Conditions: []clusterv1beta2.ConditionType{
+			clusterv1beta2.ConditionType(clusterv1beta1.ReadyCondition),
 			infrav1beta1.DNSReadyCondition,
 			infrav1beta1.APIServerAvailableCondition,
 		}},
@@ -117,14 +122,17 @@ func (s *ClusterScope) Close() error {
 
 // APIServerPort returns the APIServerPort to use when creating the load balancer.
 func (s *ClusterScope) APIServerPort() int {
-	if s.Cluster.Spec.ClusterNetwork != nil && s.Cluster.Spec.ClusterNetwork.APIServerPort != nil {
-		return int(*s.Cluster.Spec.ClusterNetwork.APIServerPort)
+	if s.Cluster.Spec.ClusterNetwork.APIServerPort != 0 {
+		return int(s.Cluster.Spec.ClusterNetwork.APIServerPort)
 	}
 	return 6443
 }
 
 // SetDNSName sets the Network systemID in spec.
 func (s *ClusterScope) SetDNSName(dnsName string) {
+	if s.MaasCluster == nil {
+		return
+	}
 	s.MaasCluster.Status.Network.DNSName = dnsName
 }
 
@@ -133,6 +141,10 @@ func (s *ClusterScope) SetDNSName(dnsName string) {
 func (s *ClusterScope) GetDNSName() string {
 	if !s.Cluster.Spec.ControlPlaneEndpoint.IsZero() {
 		return s.Cluster.Spec.ControlPlaneEndpoint.Host
+	}
+
+	if s.MaasCluster == nil {
+		return ""
 	}
 
 	if s.MaasCluster.Status.Network.DNSName != "" {
@@ -150,7 +162,7 @@ func (s *ClusterScope) GetDNSName() string {
 func (s *ClusterScope) GetClusterMaasMachines() ([]*infrav1beta1.MaasMachine, error) {
 
 	machineList := &infrav1beta1.MaasMachineList{}
-	labels := map[string]string{clusterv1.ClusterNameLabel: s.Cluster.Name}
+	labels := map[string]string{clusterv1beta1.ClusterNameLabel: s.Cluster.Name}
 
 	if err := s.client.List(
 		context.TODO(),
@@ -180,7 +192,7 @@ var (
 )
 
 func (s *ClusterScope) ReconcileMaasClusterWhenAPIServerIsOnline() {
-	if s.Cluster.Status.ControlPlaneReady {
+	if s.Cluster.Status.Initialization.ControlPlaneInitialized != nil && *s.Cluster.Status.Initialization.ControlPlaneInitialized {
 		s.Info("skipping reconcile when API server is online",
 			"reason", "ControlPlaneReady")
 		return
@@ -234,7 +246,7 @@ func (s *ClusterScope) IsAPIServerOnline() (bool, error) {
 		return false, errors.New("Cluster is deleting; abort IsAPIServerOnline")
 	}
 
-	remoteClient, err := s.tracker.GetClient(ctx, util.ObjectKey(s.Cluster))
+	remoteClient, err := remote.NewClusterClient(ctx, s.controllerName, s.client, util.ObjectKey(s.Cluster))
 	if err != nil {
 		s.V(2).Info("Waiting for online server to come online")
 		return false, nil

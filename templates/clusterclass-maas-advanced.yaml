@@ -1,0 +1,433 @@
+# Advanced ClusterClass example showcasing variables, validations, and preserved unknown fields.
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: ClusterClass
+metadata:
+  name: maas-advanced
+spec:
+  infrastructure:
+    ref:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      kind: MaasClusterTemplate
+      name: maas-advanced-cluster-template
+  controlPlane:
+    ref:
+      apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+      kind: KubeadmControlPlaneTemplate
+      name: maas-advanced-control-plane-template
+    machineInfrastructure:
+      ref:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: MaasMachineTemplate
+        name: maas-advanced-control-plane-machinetemplate
+  workers:
+    machineDeployments:
+      - class: md-default
+        template:
+          bootstrap:
+            ref:
+              apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+              kind: KubeadmConfigTemplate
+              name: maas-advanced-worker-bootstrap-template
+          infrastructure:
+            ref:
+              apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+              kind: MaasMachineTemplate
+              name: maas-advanced-worker-machinetemplate
+  variables:
+    - name: dnsDomain
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: string
+          description: Base DNS domain used by MaaS.
+          minLength: 4
+          maxLength: 253
+          pattern: "^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,}$"
+    - name: maasTags
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: array
+          description: MaaS machine tags (1-5 tags).
+          minItems: 1
+          maxItems: 5
+          items:
+            type: string
+            minLength: 1
+            maxLength: 63
+            pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+    - name: controlPlaneSizing
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: Control plane sizing with strict bounds.
+          properties:
+            minCPU:
+              type: integer
+              minimum: 2
+              maximum: 64
+            minMemory:
+              type: integer
+              minimum: 2048
+              maximum: 262144
+          required:
+            - minCPU
+            - minMemory
+          additionalProperties: false
+    - name: workerSizing
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: Worker sizing with strict bounds.
+          properties:
+            minCPU:
+              type: integer
+              minimum: 2
+              maximum: 128
+            minMemory:
+              type: integer
+              minimum: 2048
+              maximum: 524288
+          required:
+            - minCPU
+            - minMemory
+          additionalProperties: false
+    - name: imageSelector
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: MaaS image selection options with validation.
+          properties:
+            image:
+              type: string
+              minLength: 1
+              maxLength: 128
+            resourcePool:
+              type: string
+              minLength: 1
+              maxLength: 128
+            failureDomain:
+              type: string
+              minLength: 1
+              maxLength: 128
+              pattern: "^[a-zA-Z0-9][a-zA-Z0-9-_.]{0,127}$"
+          required:
+            - image
+            - resourcePool
+    - name: kubeadmOverrides
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: Arbitrary kubeadmConfigSpec overrides (preserve unknown fields).
+          x-kubernetes-preserve-unknown-fields: true
+    - name: bootstrapExtraArgs
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: Extra kubelet args with key/value validation.
+          additionalProperties:
+            type: string
+            minLength: 1
+            maxLength: 256
+          maxProperties: 20
+    - name: maxUnavailable
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: integer
+          description: Max unavailable machines during rolling upgrade.
+          minimum: 0
+          maximum: 5
+    - name: mdReplicas
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: integer
+          minimum: 1
+          maximum: 50
+  patches:
+    - name: maas-cluster-dns
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            kind: MaasClusterTemplate
+            matchResources:
+              infrastructureCluster: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/dnsDomain
+              valueFrom:
+                variable: dnsDomain
+    - name: maas-tags
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            kind: MaasMachineTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/tags
+              valueFrom:
+                variable: maasTags
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            kind: MaasMachineTemplate
+            matchResources:
+              machineDeploymentClass:
+                names:
+                  - md-default
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/tags
+              valueFrom:
+                variable: maasTags
+    - name: control-plane-sizing
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            kind: MaasMachineTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/minCPU
+              valueFrom:
+                variable: controlPlaneSizing.minCPU
+            - op: add
+              path: /spec/template/spec/minMemory
+              valueFrom:
+                variable: controlPlaneSizing.minMemory
+    - name: worker-sizing
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            kind: MaasMachineTemplate
+            matchResources:
+              machineDeploymentClass:
+                names:
+                  - md-default
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/minCPU
+              valueFrom:
+                variable: workerSizing.minCPU
+            - op: add
+              path: /spec/template/spec/minMemory
+              valueFrom:
+                variable: workerSizing.minMemory
+    - name: image-selection
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            kind: MaasMachineTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/image
+              valueFrom:
+                variable: imageSelector.image
+            - op: add
+              path: /spec/template/spec/resourcePool
+              valueFrom:
+                variable: imageSelector.resourcePool
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            kind: MaasMachineTemplate
+            matchResources:
+              machineDeploymentClass:
+                names:
+                  - md-default
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/image
+              valueFrom:
+                variable: imageSelector.image
+            - op: add
+              path: /spec/template/spec/resourcePool
+              valueFrom:
+                variable: imageSelector.resourcePool
+            - op: add
+              path: /spec/template/spec/failureDomain
+              valueFrom:
+                variable: imageSelector.failureDomain
+    - name: kubeadm-overrides
+      definitions:
+        - selector:
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+            kind: KubeadmControlPlaneTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/kubeadmConfigSpec
+              valueFrom:
+                variable: kubeadmOverrides
+        - selector:
+            apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+            kind: KubeadmConfigTemplate
+            matchResources:
+              machineDeploymentClass:
+                names:
+                  - md-default
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec
+              valueFrom:
+                variable: kubeadmOverrides
+    - name: bootstrap-extra-args
+      definitions:
+        - selector:
+            apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+            kind: KubeadmConfigTemplate
+            matchResources:
+              machineDeploymentClass:
+                names:
+                  - md-default
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/joinConfiguration/nodeRegistration/kubeletExtraArgs
+              valueFrom:
+                variable: bootstrapExtraArgs
+    - name: md-replicas
+      definitions:
+        - selector:
+            apiVersion: cluster.x-k8s.io/v1beta1
+            kind: Cluster
+            matchResources:
+              cluster: true
+          jsonPatches:
+            - op: add
+              path: /spec/topology/workers/machineDeployments/0/replicas
+              valueFrom:
+                variable: mdReplicas
+    - name: max-unavailable
+      definitions:
+        - selector:
+            apiVersion: cluster.x-k8s.io/v1beta1
+            kind: Cluster
+            matchResources:
+              cluster: true
+          jsonPatches:
+            - op: add
+              path: /spec/topology/workers/machineDeployments/0/rollout/strategy/rollingUpdate/maxUnavailable
+              valueFrom:
+                variable: maxUnavailable
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasClusterTemplate
+metadata:
+  name: maas-advanced-cluster-template
+spec:
+  template:
+    spec: {}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: maas-advanced-control-plane-machinetemplate
+spec:
+  template:
+    spec: {}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: maas-advanced-worker-machinetemplate
+spec:
+  template:
+    spec: {}
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: KubeadmControlPlaneTemplate
+metadata:
+  name: maas-advanced-control-plane-template
+spec:
+  template:
+    spec:
+      replicas: 3
+      version: v1.31.0
+      machineTemplate:
+        infrastructureRef:
+          apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+          kind: MaasMachineTemplate
+          name: maas-advanced-control-plane-machinetemplate
+      kubeadmConfigSpec:
+        initConfiguration:
+          nodeRegistration:
+            kubeletExtraArgs:
+              cloud-provider: external
+        joinConfiguration:
+          nodeRegistration:
+            kubeletExtraArgs:
+              cloud-provider: external
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: KubeadmConfigTemplate
+metadata:
+  name: maas-advanced-worker-bootstrap-template
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+            cloud-provider: external
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: maas-advanced-cluster
+spec:
+  topology:
+    class: maas-advanced
+    version: v1.31.0
+    controlPlane:
+      metadata: {}
+    workers:
+      machineDeployments:
+        - class: md-default
+          name: md-0
+          replicas: 3
+    variables:
+      - name: dnsDomain
+        value: "example.internal"
+      - name: maasTags
+        value: ["maas", "capmaas", "prod"]
+      - name: controlPlaneSizing
+        value:
+          minCPU: 4
+          minMemory: 8192
+      - name: workerSizing
+        value:
+          minCPU: 8
+          minMemory: 16384
+      - name: imageSelector
+        value:
+          image: ubuntu-2204
+          resourcePool: default
+          failureDomain: rack-a
+      - name: kubeadmOverrides
+        value:
+          clusterConfiguration:
+            apiServer:
+              extraArgs:
+                feature-gates: "NodeSwap=true"
+          initConfiguration:
+            nodeRegistration:
+              kubeletExtraArgs:
+                node-labels: "node-role.kubernetes.io/worker="
+      - name: bootstrapExtraArgs
+        value:
+          node-labels: "nodepool=general"
+          register-with-taints: "dedicated=general:NoSchedule"
+      - name: mdReplicas
+        value: 4
+      - name: maxUnavailable
+        value: 1

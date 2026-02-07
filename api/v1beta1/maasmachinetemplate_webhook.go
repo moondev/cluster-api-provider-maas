@@ -17,6 +17,7 @@ limitations under the License.
 package v1beta1
 
 import (
+	"context"
 	"fmt"
 
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -26,7 +27,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 )
 
 // log is for logging in this package.
@@ -42,23 +42,32 @@ func (r *MaasMachineTemplate) SetupWebhookWithManager(mgr ctrl.Manager) error {
 //+kubebuilder:webhook:verbs=create;update,path=/validate-infrastructure-cluster-x-k8s-io-v1beta1-maasmachinetemplate,mutating=false,failurePolicy=fail,groups=infrastructure.cluster.x-k8s.io,resources=maasmachinetemplates,versions=v1beta1,name=vmaasmachinetemplate.kb.io,sideEffects=None,admissionReviewVersions=v1beta1;v1
 
 var (
-	_ webhook.Defaulter = &MaasMachineTemplate{}
-	_ webhook.Validator = &MaasMachineTemplate{}
+	_ admission.CustomDefaulter = &MaasMachineTemplate{}
+	_ admission.CustomValidator = &MaasMachineTemplate{}
 )
 
-// Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *MaasMachineTemplate) Default() {
-	maasmachinetemplatelog.Info("default", "name", r.Name)
+// Default implements admission.CustomDefaulter so a webhook will be registered for the type
+func (r *MaasMachineTemplate) Default(_ context.Context, obj runtime.Object) error {
+	maasMachineTemplate, ok := obj.(*MaasMachineTemplate)
+	if !ok {
+		return apierrors.NewBadRequest(fmt.Sprintf("expected a MaasMachineTemplate but got a %T", obj))
+	}
+	maasmachinetemplatelog.Info("default", "name", maasMachineTemplate.Name)
+	return nil
 }
 
-// ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *MaasMachineTemplate) ValidateCreate() (admission.Warnings, error) {
-	maasmachinetemplatelog.Info("validate create", "name", r.Name)
+// ValidateCreate implements admission.CustomValidator so a webhook will be registered for the type
+func (r *MaasMachineTemplate) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
+	maasMachineTemplate, ok := obj.(*MaasMachineTemplate)
+	if !ok {
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected a MaasMachineTemplate but got a %T", obj))
+	}
+	maasmachinetemplatelog.Info("validate create", "name", maasMachineTemplate.Name)
 
 	// ClusterClass/managed topology validation
-	if isManagedTopologyTemplate(r) {
+	if isManagedTopologyTemplate(maasMachineTemplate) {
 		flds := field.ErrorList{}
-		spec := r.Spec.Template.Spec
+		spec := maasMachineTemplate.Spec.Template.Spec
 		if spec.Image == "" {
 			flds = append(flds, field.Required(field.NewPath("spec").Child("template").Child("spec").Child("image"), "spec.template.spec.image is required for managed topology (ClusterClass)"))
 		}
@@ -71,7 +80,7 @@ func (r *MaasMachineTemplate) ValidateCreate() (admission.Warnings, error) {
 		if len(flds) > 0 {
 			return nil, apierrors.NewInvalid(
 				GroupVersion.WithKind("MaasMachineTemplate").GroupKind(),
-				r.Name,
+				maasMachineTemplate.Name,
 				flds,
 			)
 		}
@@ -79,27 +88,34 @@ func (r *MaasMachineTemplate) ValidateCreate() (admission.Warnings, error) {
 	return nil, nil
 }
 
-// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *MaasMachineTemplate) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
-	maasmachinetemplatelog.Info("validate update", "name", r.Name)
-	oldM := old.(*MaasMachineTemplate)
+// ValidateUpdate implements admission.CustomValidator so a webhook will be registered for the type
+func (r *MaasMachineTemplate) ValidateUpdate(_ context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+	oldM, ok := oldObj.(*MaasMachineTemplate)
+	if !ok {
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected a MaasMachineTemplate but got a %T", oldObj))
+	}
+	maasMachineTemplate, ok := newObj.(*MaasMachineTemplate)
+	if !ok {
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected a MaasMachineTemplate but got a %T", newObj))
+	}
+	maasmachinetemplatelog.Info("validate update", "name", maasMachineTemplate.Name)
 
-	if r.Spec.Template.Spec.Image != oldM.Spec.Template.Spec.Image {
-		return nil, apierrors.NewBadRequest(fmt.Sprintf("maas machine template image change is not allowed, old=%s, new=%s", oldM.Spec.Template.Spec.Image, r.Spec.Template.Spec.Image))
+	if maasMachineTemplate.Spec.Template.Spec.Image != oldM.Spec.Template.Spec.Image {
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("maas machine template image change is not allowed, old=%s, new=%s", oldM.Spec.Template.Spec.Image, maasMachineTemplate.Spec.Template.Spec.Image))
 	}
 
-	if *r.Spec.Template.Spec.MinCPU != *oldM.Spec.Template.Spec.MinCPU {
-		return nil, apierrors.NewBadRequest(fmt.Sprintf("maas machine template min cpu count change is not allowed, old=%d, new=%d", oldM.Spec.Template.Spec.MinCPU, r.Spec.Template.Spec.MinCPU))
+	if *maasMachineTemplate.Spec.Template.Spec.MinCPU != *oldM.Spec.Template.Spec.MinCPU {
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("maas machine template min cpu count change is not allowed, old=%d, new=%d", oldM.Spec.Template.Spec.MinCPU, maasMachineTemplate.Spec.Template.Spec.MinCPU))
 	}
 
-	if *r.Spec.Template.Spec.MinMemoryInMB != *oldM.Spec.Template.Spec.MinMemoryInMB {
-		return nil, apierrors.NewBadRequest(fmt.Sprintf("maas machine template min memory change is not allowed, old=%d MB, new=%d MB", oldM.Spec.Template.Spec.MinMemoryInMB, r.Spec.Template.Spec.MinMemoryInMB))
+	if *maasMachineTemplate.Spec.Template.Spec.MinMemoryInMB != *oldM.Spec.Template.Spec.MinMemoryInMB {
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("maas machine template min memory change is not allowed, old=%d MB, new=%d MB", oldM.Spec.Template.Spec.MinMemoryInMB, maasMachineTemplate.Spec.Template.Spec.MinMemoryInMB))
 	}
 
 	// ClusterClass/managed topology validation
-	if isManagedTopologyTemplate(r) {
+	if isManagedTopologyTemplate(maasMachineTemplate) {
 		flds := field.ErrorList{}
-		spec := r.Spec.Template.Spec
+		spec := maasMachineTemplate.Spec.Template.Spec
 		if spec.Image == "" {
 			flds = append(flds, field.Required(field.NewPath("spec").Child("template").Child("spec").Child("image"), "spec.template.spec.image is required for managed topology (ClusterClass)"))
 		}
@@ -112,7 +128,7 @@ func (r *MaasMachineTemplate) ValidateUpdate(old runtime.Object) (admission.Warn
 		if len(flds) > 0 {
 			return nil, apierrors.NewInvalid(
 				GroupVersion.WithKind("MaasMachineTemplate").GroupKind(),
-				r.Name,
+				maasMachineTemplate.Name,
 				flds,
 			)
 		}
@@ -120,9 +136,13 @@ func (r *MaasMachineTemplate) ValidateUpdate(old runtime.Object) (admission.Warn
 	return nil, nil
 }
 
-// ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *MaasMachineTemplate) ValidateDelete() (admission.Warnings, error) {
-	maasmachinetemplatelog.Info("validate delete", "name", r.Name)
+// ValidateDelete implements admission.CustomValidator so a webhook will be registered for the type
+func (r *MaasMachineTemplate) ValidateDelete(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
+	maasMachineTemplate, ok := obj.(*MaasMachineTemplate)
+	if !ok {
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected a MaasMachineTemplate but got a %T", obj))
+	}
+	maasmachinetemplatelog.Info("validate delete", "name", maasMachineTemplate.Name)
 	return nil, nil
 }
 

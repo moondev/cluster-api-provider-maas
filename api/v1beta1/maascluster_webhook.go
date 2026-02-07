@@ -17,6 +17,7 @@ limitations under the License.
 package v1beta1
 
 import (
+	"context"
 	"fmt"
 
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -26,7 +27,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 )
 
 // log is for logging in this package.
@@ -42,25 +42,34 @@ func (r *MaasCluster) SetupWebhookWithManager(mgr ctrl.Manager) error {
 //+kubebuilder:webhook:verbs=create;update,path=/validate-infrastructure-cluster-x-k8s-io-v1beta1-maascluster,mutating=false,failurePolicy=fail,groups=infrastructure.cluster.x-k8s.io,resources=maasclusters,versions=v1beta1,name=vmaascluster.kb.io,sideEffects=None,admissionReviewVersions=v1beta1;v1
 
 var (
-	_ webhook.Defaulter = &MaasCluster{}
-	_ webhook.Validator = &MaasCluster{}
+	_ admission.CustomDefaulter = &MaasCluster{}
+	_ admission.CustomValidator = &MaasCluster{}
 )
 
-// Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *MaasCluster) Default() {
-	maasclusterlog.Info("default", "name", r.Name)
+// Default implements admission.CustomDefaulter so a webhook will be registered for the type
+func (r *MaasCluster) Default(_ context.Context, obj runtime.Object) error {
+	maasCluster, ok := obj.(*MaasCluster)
+	if !ok {
+		return apierrors.NewBadRequest(fmt.Sprintf("expected a MaasCluster but got a %T", obj))
+	}
+	maasclusterlog.Info("default", "name", maasCluster.Name)
+	return nil
 }
 
-// ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *MaasCluster) ValidateCreate() (admission.Warnings, error) {
-	maasclusterlog.Info("validate create", "name", r.Name)
+// ValidateCreate implements admission.CustomValidator so a webhook will be registered for the type
+func (r *MaasCluster) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
+	maasCluster, ok := obj.(*MaasCluster)
+	if !ok {
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected a MaasCluster but got a %T", obj))
+	}
+	maasclusterlog.Info("validate create", "name", maasCluster.Name)
 
 	// ClusterClass/managed topology validation
-	if isManagedTopology(r) {
-		if r.Spec.DNSDomain == "" {
+	if isManagedTopology(maasCluster) {
+		if maasCluster.Spec.DNSDomain == "" {
 			return nil, apierrors.NewInvalid(
 				GroupVersion.WithKind("MaasCluster").GroupKind(),
-				r.Name,
+				maasCluster.Name,
 				field.ErrorList{
 					field.Required(field.NewPath("spec").Child("dnsDomain"), "spec.dnsDomain is required for managed topology (ClusterClass)"),
 				},
@@ -70,24 +79,29 @@ func (r *MaasCluster) ValidateCreate() (admission.Warnings, error) {
 	return nil, nil
 }
 
-// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *MaasCluster) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
-	maasclusterlog.Info("validate update", "name", r.Name)
-	oldC, ok := old.(*MaasCluster)
+// ValidateUpdate implements admission.CustomValidator so a webhook will be registered for the type
+func (r *MaasCluster) ValidateUpdate(_ context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+	oldC, ok := oldObj.(*MaasCluster)
 	if !ok {
-		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected a MaasCluster but got a %T", old))
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected a MaasCluster but got a %T", oldObj))
+	}
+	maasCluster, ok := newObj.(*MaasCluster)
+	if !ok {
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected a MaasCluster but got a %T", newObj))
 	}
 
-	if r.Spec.DNSDomain != oldC.Spec.DNSDomain {
+	maasclusterlog.Info("validate update", "name", maasCluster.Name)
+
+	if maasCluster.Spec.DNSDomain != oldC.Spec.DNSDomain {
 		return nil, apierrors.NewBadRequest("changing cluster DNS Domain not allowed")
 	}
 
 	// ClusterClass/managed topology validation
-	if isManagedTopology(r) {
-		if r.Spec.DNSDomain == "" {
+	if isManagedTopology(maasCluster) {
+		if maasCluster.Spec.DNSDomain == "" {
 			return nil, apierrors.NewInvalid(
 				GroupVersion.WithKind("MaasCluster").GroupKind(),
-				r.Name,
+				maasCluster.Name,
 				field.ErrorList{
 					field.Required(field.NewPath("spec").Child("dnsDomain"), "spec.dnsDomain is required for managed topology (ClusterClass)"),
 				},
@@ -97,9 +111,13 @@ func (r *MaasCluster) ValidateUpdate(old runtime.Object) (admission.Warnings, er
 	return nil, nil
 }
 
-// ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *MaasCluster) ValidateDelete() (admission.Warnings, error) {
-	maasclusterlog.Info("validate delete", "name", r.Name)
+// ValidateDelete implements admission.CustomValidator so a webhook will be registered for the type
+func (r *MaasCluster) ValidateDelete(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
+	maasCluster, ok := obj.(*MaasCluster)
+	if !ok {
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected a MaasCluster but got a %T", obj))
+	}
+	maasclusterlog.Info("validate delete", "name", maasCluster.Name)
 	return nil, nil
 }
 
