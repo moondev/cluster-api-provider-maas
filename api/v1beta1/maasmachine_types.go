@@ -64,9 +64,9 @@ type MaasMachineSpec struct {
 	// +kubebuilder:validation:MinLength=1
 	Image string `json:"image"`
 
-	// Ephemeral, if true, deploys the machine in memory instead of disk
-	// +optional
-	Ephemeral bool `json:"ephemeral,omitempty"`
+	// DeployInMemory indicates to maas to deploy machine in memory
+	// +kubebuilder:default=false
+	DeployInMemory bool `json:"deployInMemory,omitempty"`
 }
 
 // MaasMachineStatus defines the observed state of MaasMachine

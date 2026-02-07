@@ -64,6 +64,7 @@ func TestMachine(t *testing.T) {
 		mockMachine.EXPECT().State().Return("Deployed")
 		mockMachine.EXPECT().PowerState().Return("on")
 		mockMachine.EXPECT().Zone().Return(mockZone)
+		mockMachine.EXPECT().DeployedAtMemory().Return(false)
 
 		mockZone.EXPECT().Name().Return("zone1")
 
@@ -107,7 +108,7 @@ func TestMachine(t *testing.T) {
 		mockClientSetInterface.EXPECT().Machines().Return(mockMachines)
 		mockMachines.EXPECT().Machine("abc123").Return(mockMachine)
 		mockMachine.EXPECT().Releaser().Return(mockMachineReleaser)
-		mockMachineReleaser.EXPECT().Release(context.Background()).Return(mockMachine, nil)
+		mockMachineReleaser.EXPECT().Release(context.TODO()).Return(mockMachine, nil)
 
 		err := s.ReleaseMachine("abc123")
 		g.Expect(err).ToNot(HaveOccurred())

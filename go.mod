@@ -1,8 +1,8 @@
 module github.com/moondev/cluster-api-provider-maas
 
-go 1.23.0
+go 1.24
 
-toolchain go1.23.6
+toolchain go1.24.12
 
 require (
 	github.com/canonical/gomaasclient v0.15.0
@@ -12,6 +12,7 @@ require (
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.36.1
 	github.com/pkg/errors v0.9.1
+	github.com/spectrocloud/maas-client-go v0.1.2-beta1
 	// github.com/spectrocloud/maas-client-go v0.0.1-beta1.0.20230830132549-2f7491722359
 	// github.com/canonical/gomaasclient
 	github.com/spf13/pflag v1.0.5
@@ -25,10 +26,7 @@ require (
 	sigs.k8s.io/controller-runtime v0.19.4
 )
 
-require (
-	github.com/canonical/gomaasclient v0.15.0
-	github.com/spectrocloud/maas-client-go v0.0.2-beta
-)
+require github.com/spectrocloud/cluster-api-provider-maas v1.9.4
 
 require (
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect

@@ -1,7 +1,6 @@
 package machine
 
 import (
-
 	"github.com/canonical/gomaasclient/client"
 	"github.com/canonical/gomaasclient/entity"
 	"github.com/pkg/errors"
@@ -70,7 +69,6 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 		failureDomain = s.scope.Machine.Spec.FailureDomain
 	}
 
-
 	var m *entity.Machine
 
 	var err error
@@ -130,7 +128,15 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 		deployParams.EphemeralDeploy = true
 	}
 
-	deployingM, err := s.maasClient.Machine.Deploy(m.SystemID, deployParams)
+	if mm.Spec.DeployInMemory {
+		s.scope.Info("Machine will be deployed in memory", "system-id", m.SystemID())
+	}
+
+	deployingM, err := m.Deployer().
+		SetUserData(userDataB64).
+		SetOSSystem("custom").
+		SetEphemeralDeploy(mm.Spec.DeployInMemory).
+		SetDistroSeries(mm.Spec.Image).Deploy(ctx)
 	if err != nil {
 		return nil, errors.Wrapf(err, "Unable to deploy machine")
 	}
@@ -142,15 +148,15 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 	return machine, nil
 }
 
-
 func fromSDKTypeToMachine(m *entity.Machine) *infrav1beta1.Machine {
 
 	machine := &infrav1beta1.Machine{
-		ID:               m.SystemID,
-		Hostname:         m.Hostname,
-		State:            infrav1beta1.MachineState(m.StatusName),
-		Powered:          m.PowerState == "on",
-		AvailabilityZone: m.Zone.Name,
+		ID:               m.SystemID(),
+		Hostname:         m.Hostname(),
+		State:            infrav1beta1.MachineState(m.State()),
+		Powered:          m.PowerState() == "on",
+		DeployedAtMemory: m.DeployedAtMemory(),
+		AvailabilityZone: m.Zone().Name(),
 	}
 
 	// Add IP addresses if available
