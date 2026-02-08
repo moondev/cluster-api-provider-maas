@@ -16,14 +16,14 @@ limitations under the License.
 
 package v1beta1
 
-import clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+import clusterv1beta2 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 
 // Conditions and condition Reasons for the MAAS Machine object
 
 const (
 	// MachineDeployedCondition documents the status of the deployment of a machine
 
-	MachineDeployedCondition clusterv1.ConditionType = "MachineDeployed"
+	MachineDeployedCondition clusterv1beta2.ConditionType = "MachineDeployed"
 
 	// WaitingForClusterInfrastructureReason (Severity=Info) documents a MachineMachine waiting for the cluster
 	// infrastructure to be ready before starting to deploy the machine that provides the MachineMachine
@@ -58,7 +58,7 @@ const (
 const (
 	// Only applicable to control plane machines. DNSAttachedCondition will report true when a control plane is successfully registered with an DNS
 	// When set to false, severity can be an Error if the subnet is not found or unavailable in the instance's AZ
-	DNSAttachedCondition clusterv1.ConditionType = "DNSAttached"
+	DNSAttachedCondition clusterv1beta2.ConditionType = "DNSAttached"
 
 	DNSDetachPending = "DNSDetachPending"
 	DNSAttachPending = "DNSAttachPending"
@@ -68,7 +68,7 @@ const (
 
 const (
 	// DNSReadyCondition documents the availability of the container that implements the cluster DNS.
-	DNSReadyCondition clusterv1.ConditionType = "LoadBalancerReady"
+	DNSReadyCondition clusterv1beta2.ConditionType = "LoadBalancerReady"
 
 	// LoadBalancerProvisioningFailedReason (Severity=Warning) documents a MAASCluster controller detecting
 	// dns reconcile failure will be retried
@@ -79,7 +79,7 @@ const (
 
 const (
 	// APIServerAvailableCondition documents whether API server is reachable
-	APIServerAvailableCondition clusterv1.ConditionType = "APIServerAvailable"
+	APIServerAvailableCondition clusterv1beta2.ConditionType = "APIServerAvailable"
 
 	// APIServerNotReadyReason api server isn't responding
 	APIServerNotReadyReason = "APIServerNotReady"

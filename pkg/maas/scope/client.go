@@ -20,7 +20,7 @@ import (
 	"os"
 
 	"github.com/canonical/gomaasclient/client"
-
+	maasclient "github.com/spectrocloud/maas-client-go/maasclient"
 )
 
 // NewMaasClient creates a new MaaS client for a given session
@@ -59,6 +59,6 @@ func NewSpectroMaasClient(_ *ClusterScope) maasclient.ClientSetInterface {
 		panic("missing env MAAS_API_KEY; e.g: MAAS_API_KEY=x:y:z>")
 	}
 
-	maasClient := client.NewAuthenticatedClientSet(maasEndpoint, maasAPIKey)
+	maasClient := maasclient.NewAuthenticatedClientSet(maasEndpoint, maasAPIKey)
 	return maasClient
 }

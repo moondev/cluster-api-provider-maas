@@ -21,17 +21,17 @@ import (
 	"fmt"
 
 	"github.com/go-logr/logr"
-	infrav1beta1 "github.com/moondev/cluster-api-provider-maas/api/v1beta1"
+	infrav1beta2 "github.com/moondev/cluster-api-provider-maas/api/v1beta2"
 	infrautil "github.com/moondev/cluster-api-provider-maas/pkg/util"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/pointer"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	"sigs.k8s.io/cluster-api/controllers/remote"
+	clusterv1beta2 "sigs.k8s.io/cluster-api/api/core/v1beta2"
+	"sigs.k8s.io/cluster-api/controllers/clustercache"
 	capierrors "sigs.k8s.io/cluster-api/errors"
 	"sigs.k8s.io/cluster-api/util"
-	"sigs.k8s.io/cluster-api/util/conditions"
+	v1beta1conditions "sigs.k8s.io/cluster-api/util/conditions/deprecated/v1beta1"
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -40,13 +40,13 @@ import (
 type MachineScopeParams struct {
 	Client         client.Client
 	Logger         logr.Logger
-	Cluster        *clusterv1.Cluster
+	Cluster        *clusterv1beta2.Cluster
 	ClusterScope   *ClusterScope
-	Machine        *clusterv1.Machine
-	MaasMachine    *infrav1beta1.MaasMachine
+	Machine        *clusterv1beta2.Machine
+	MaasMachine    *infrav1beta2.MaasMachine
 	ControllerName string
 
-	Tracker *remote.ClusterCacheTracker
+	ClusterCache clustercache.ClusterCache
 }
 
 // MachineScope defines the basic context for an actuator to operate upon.
@@ -55,14 +55,14 @@ type MachineScope struct {
 	client      client.Client
 	patchHelper *patch.Helper
 
-	Cluster      *clusterv1.Cluster
+	Cluster      *clusterv1beta2.Cluster
 	ClusterScope *ClusterScope
 
-	Machine     *clusterv1.Machine
-	MaasMachine *infrav1beta1.MaasMachine
+	Machine     *clusterv1beta2.Machine
+	MaasMachine *infrav1beta2.MaasMachine
 
 	controllerName string
-	tracker        *remote.ClusterCacheTracker
+	clusterCache   clustercache.ClusterCache
 }
 
 // NewMachineScope creates a new Scope from the supplied parameters.
@@ -81,35 +81,33 @@ func NewMachineScope(params MachineScopeParams) (*MachineScope, error) {
 		ClusterScope:   params.ClusterScope,
 		patchHelper:    helper,
 		client:         params.Client,
-		tracker:        params.Tracker,
+		clusterCache:   params.ClusterCache,
 		controllerName: params.ControllerName,
 	}, nil
 }
 
 // PatchObject persists the machine configuration and status.
 func (m *MachineScope) PatchObject() error {
-
-	applicableConditions := []clusterv1.ConditionType{
-		infrav1beta1.MachineDeployedCondition,
+	applicableConditions := []clusterv1beta2.ConditionType{
+		infrav1beta2.MachineDeployedCondition,
 	}
-
 	if m.IsControlPlane() {
-		applicableConditions = append(applicableConditions, infrav1beta1.DNSAttachedCondition)
+		applicableConditions = append(applicableConditions, infrav1beta2.DNSAttachedCondition)
 	}
 	// Always update the readyCondition by summarizing the state of other conditions.
-	// A step counter is added to represent progress during the provisioning process (instead we are hiding it during the deletion process).
-	conditions.SetSummary(m.MaasMachine,
-		conditions.WithConditions(applicableConditions...),
-		conditions.WithStepCounterIf(m.MaasMachine.ObjectMeta.DeletionTimestamp.IsZero()),
+	v1beta1conditions.SetSummary(m.MaasMachine,
+		v1beta1conditions.WithConditions(applicableConditions...),
+		v1beta1conditions.WithStepCounterIf(m.MaasMachine.ObjectMeta.DeletionTimestamp.IsZero()),
 	)
 
 	// Patch the object, ignoring conflicts on the conditions owned by this controller.
 	return m.patchHelper.Patch(
 		context.TODO(),
 		m.MaasMachine,
-		patch.WithOwnedConditions{Conditions: []clusterv1.ConditionType{
-			clusterv1.ReadyCondition,
-			infrav1beta1.MachineDeployedCondition,
+		patch.WithOwnedConditions{Conditions: []string{
+			string(clusterv1beta2.ReadyCondition),
+			string(infrav1beta2.MachineDeployedCondition),
+			string(infrav1beta2.DNSAttachedCondition),
 		}},
 	)
 }
@@ -120,7 +118,7 @@ func (m *MachineScope) Close() error {
 }
 
 // SetAddresses sets the MAAS Machine address status.
-func (m *MachineScope) SetAddresses(addrs []clusterv1.MachineAddress) {
+func (m *MachineScope) SetAddresses(addrs []clusterv1beta2.MachineAddress) {
 	m.MaasMachine.Status.Addresses = addrs
 }
 
@@ -201,12 +199,12 @@ func (m *MachineScope) GetSystemID() string {
 }
 
 // GetMachineState returns the MaasMachine instance state from the status.
-func (m *MachineScope) GetMachineState() *infrav1beta1.MachineState {
+func (m *MachineScope) GetMachineState() *infrav1beta2.MachineState {
 	return m.MaasMachine.Status.MachineState
 }
 
 // SetMachineState sets the MaasMachine status instance state.
-func (m *MachineScope) SetMachineState(v infrav1beta1.MachineState) {
+func (m *MachineScope) SetMachineState(v infrav1beta2.MachineState) {
 	m.MaasMachine.Status.MachineState = &v
 }
 func (m *MachineScope) SetPowered(powered bool) {
@@ -228,17 +226,17 @@ func (m *MachineScope) SetMachineHostname(hostname string) {
 
 func (m *MachineScope) MachineIsRunning() bool {
 	state := m.GetMachineState()
-	return state != nil && infrav1beta1.MachineRunningStates.Has(string(*state))
+	return state != nil && infrav1beta2.MachineRunningStates.Has(string(*state))
 }
 
 func (m *MachineScope) MachineIsOperational() bool {
 	state := m.GetMachineState()
-	return state != nil && infrav1beta1.MachineOperationalStates.Has(string(*state))
+	return state != nil && infrav1beta2.MachineOperationalStates.Has(string(*state))
 }
 
 func (m *MachineScope) MachineIsInKnownState() bool {
 	state := m.GetMachineState()
-	return state != nil && infrav1beta1.MachineKnownStates.Has(string(*state))
+	return state != nil && infrav1beta2.MachineKnownStates.Has(string(*state))
 }
 
 // GetRawBootstrapData returns the bootstrap data from the secret in the Machine's bootstrap.dataSecretName.
@@ -266,7 +264,7 @@ func (m *MachineScope) GetRawBootstrapData() ([]byte, error) {
 // SetNodeProviderID patches the node with the ID
 func (m *MachineScope) SetNodeProviderID() error {
 	ctx := context.TODO()
-	remoteClient, err := m.tracker.GetClient(ctx, util.ObjectKey(m.Cluster))
+	remoteClient, err := m.clusterCache.GetClient(ctx, util.ObjectKey(m.Cluster))
 	if err != nil {
 		return err
 	}

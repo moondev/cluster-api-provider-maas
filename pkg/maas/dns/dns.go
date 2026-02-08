@@ -3,22 +3,23 @@ package dns
 import (
 	"context"
 
-
-	"github.com/canonical/gomaasclient/client"
 	"github.com/pkg/errors"
-	infrainfrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
-	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
+
+	maasclient "github.com/spectrocloud/maas-client-go/maasclient"
+
+	infrav1beta2 "github.com/moondev/cluster-api-provider-maas/api/v1beta2"
+	"github.com/moondev/cluster-api-provider-maas/pkg/maas/scope"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 type Service struct {
 	scope      *scope.ClusterScope
-	maasClient client.ClientSetInterface
+	maasClient maasclient.ClientSetInterface
 }
 
 var ErrNotFound = errors.New("resource not found")
 
-// DNS service returns a new helper for managing a MaaS "DNS" (DNS client loadbalancing)
+// NewService returns a new helper for managing MaaS DNS resources (e.g. API server load balancing).
 func NewService(clusterScope *scope.ClusterScope) *Service {
 	return &Service{
 		scope:      clusterScope,
@@ -26,7 +27,7 @@ func NewService(clusterScope *scope.ClusterScope) *Service {
 	}
 }
 
-// ReconcileDNS reconciles the load balancers for the given cluster.
+// ReconcileDNS reconciles the DNS resource for the given cluster.
 func (s *Service) ReconcileDNS() error {
 	s.scope.V(2).Info("Reconciling DNS")
 	ctx := context.TODO()
@@ -39,12 +40,13 @@ func (s *Service) ReconcileDNS() error {
 	dnsName := s.scope.GetDNSName()
 
 	if dnsResource == nil {
-		if _, err = s.maasClient.DNSResources().
+		_, err = s.maasClient.DNSResources().
 			Builder().
 			WithFQDN(s.scope.GetDNSName()).
 			WithAddressTTL("10").
 			WithIPAddresses(nil).
-			Create(ctx); err != nil {
+			Create(ctx)
+		if err != nil {
 			return errors.Wrapf(err, "Unable to create DNS Resources")
 		}
 	}
@@ -54,49 +56,33 @@ func (s *Service) ReconcileDNS() error {
 	return nil
 }
 
-// UpdateAttachments reconciles the load balancers for the given cluster.
+// UpdateDNSAttachments updates the DNS resource with the given IPs.
 func (s *Service) UpdateDNSAttachments(IPs []string) error {
 	s.scope.V(2).Info("Updating DNS Attachments")
 	ctx := context.TODO()
-	// get ID of loadbalancer
+
 	dnsResource, err := s.GetDNSResource()
 	if err != nil {
 		return err
 	}
 
-	if _, err = dnsResource.Modifier().SetIPAddresses(IPs).Modify(ctx); err != nil {
+	_, err = dnsResource.Modifier().SetIPAddresses(IPs).Modify(ctx)
+	if err != nil {
 		return errors.Wrap(err, "Unable to update IPs")
 	}
 
 	return nil
 }
 
-// TODO do at some point
-//func MachineIsRunning(m *infrainfrav1beta1.MaasMachine) bool {
-//	if !m.Status.MachinePowered {
-//		return false
-//	}
-//
-//	//allMachinePodConditions := []clusterv1.ConditionType{
-//	//	controlplanev1.MachineAPIServerPodHealthyCondition,
-//	//	controlplanev1.MachineControllerManagerPodHealthyCondition,
-//	//	controlplanev1.MachineSchedulerPodHealthyCondition,
-//	//}
-//	//if controlPlane.IsEtcdManaged() {
-//	//	allMachinePodConditions = append(allMachinePodConditions, controlplanev1.MachineEtcdPodHealthyCondition)
-//	//}
-//
-//}
-
-// InstanceIsRegisteredWithAPIServerELB returns true if the instance is already registered with the APIServer ELB.
-func (s *Service) MachineIsRegisteredWithAPIServerDNS(i *infrainfrav1beta1.Machine) (bool, error) {
+// MachineIsRegisteredWithAPIServerDNS returns true if the machine's addresses are in the API server DNS records.
+func (s *Service) MachineIsRegisteredWithAPIServerDNS(m *infrav1beta2.Machine) (bool, error) {
 	ips, err := s.GetAPIServerDNSRecords()
 	if err != nil {
 		return false, err
 	}
 
-	for _, mAddress := range i.Addresses {
-		if ips.Has(mAddress.Address) {
+	for _, mAddr := range m.Addresses {
+		if ips.Has(mAddr.Address) {
 			return true, nil
 		}
 	}
@@ -104,6 +90,7 @@ func (s *Service) MachineIsRegisteredWithAPIServerDNS(i *infrainfrav1beta1.Machi
 	return false, nil
 }
 
+// GetAPIServerDNSRecords returns the set of IP addresses attached to the cluster's API server DNS resource.
 func (s *Service) GetAPIServerDNSRecords() (sets.String, error) {
 	dnsResource, err := s.GetDNSResource()
 	if err != nil {
@@ -111,29 +98,31 @@ func (s *Service) GetAPIServerDNSRecords() (sets.String, error) {
 	}
 
 	ips := sets.NewString()
-	for _, address := range dnsResource.IPAddresses() {
-		if address.IP().String() != "" {
-			ips.Insert(address.IP().String())
+	for _, addr := range dnsResource.IPAddresses() {
+		if addr.IP() != nil && addr.IP().String() != "" {
+			ips.Insert(addr.IP().String())
 		}
 	}
 
 	return ips, nil
 }
 
-func (s *Service) GetDNSResource() (client.DNSResource, error) {
+// GetDNSResource returns the DNS resource for the cluster's DNS name, or ErrNotFound if none exists.
+func (s *Service) GetDNSResource() (maasclient.DNSResource, error) {
 	dnsName := s.scope.GetDNSName()
 	if dnsName == "" {
 		return nil, errors.New("No DNS on the cluster set!")
 	}
 
-	d, err := s.maasClient.DNSResources().
-		List(context.Background(),
-			client.ParamsBuilder().Set(client.FQDNKey, dnsName))
+	params := maasclient.ParamsBuilder().Set(maasclient.FQDNKey, dnsName)
+	d, err := s.maasClient.DNSResources().List(context.Background(), params)
 	if err != nil {
 		return nil, errors.Wrapf(err, "error retrieving dns resources %q", dnsName)
-	} else if len(d) > 1 {
+	}
+	if len(d) > 1 {
 		return nil, errors.Errorf("expected 1 DNS Resource for %q, got %d", dnsName, len(d))
-	} else if len(d) == 0 {
+	}
+	if len(d) == 0 {
 		return nil, ErrNotFound
 	}
 

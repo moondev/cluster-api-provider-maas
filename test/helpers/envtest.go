@@ -50,7 +50,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1beta2 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/cmd/clusterctl/log"
 	utilyaml "sigs.k8s.io/cluster-api/util/yaml"
 )
@@ -80,7 +80,7 @@ func init() {
 	// Calculate the scheme.
 	utilruntime.Must(apiextensionsv1.AddToScheme(scheme.Scheme))
 	utilruntime.Must(admissionv1.AddToScheme(scheme.Scheme))
-	utilruntime.Must(clusterv1.AddToScheme(scheme.Scheme))
+	utilruntime.Must(clusterv1beta2.AddToScheme(scheme.Scheme))
 
 	// Get the root of the current file to use in CRD paths.
 	_, filename, _, _ := goruntime.Caller(0) //nolint
@@ -192,7 +192,7 @@ func (t *TestEnvironmentConfiguration) Build() (*TestEnvironment, error) {
 	}
 
 	if _, err := t.env.Start(); err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	options := manager.Options{

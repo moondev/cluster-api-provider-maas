@@ -1,7 +1,6 @@
 package dns
 
 import (
-	"context"
 	"net"
 	"testing"
 
@@ -9,25 +8,23 @@ import (
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2/klogr"
-	"sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1beta2 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 
-
-	"github.com/canonical/gomaasclient/client"
-	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
-	mockclientset "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/client/mock"
-	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
-
+	maasclient "github.com/spectrocloud/maas-client-go/maasclient"
+	infrav1beta2 "github.com/moondev/cluster-api-provider-maas/api/v1beta2"
+	mockclientset "github.com/moondev/cluster-api-provider-maas/pkg/maas/client/mock"
+	"github.com/moondev/cluster-api-provider-maas/pkg/maas/scope"
 )
 
 func TestDNS(t *testing.T) {
 	log := klogr.New()
-	cluster := &v1beta1.Cluster{
+	cluster := &clusterv1beta2.Cluster{
 		ObjectMeta: v1.ObjectMeta{
 			Name: "a",
 		},
 	}
-	maasCluster := &infrav1beta1.MaasCluster{
-		Spec: infrav1beta1.MaasClusterSpec{
+	maasCluster := &infrav1beta2.MaasCluster{
+		Spec: infrav1beta2.MaasClusterSpec{
 			DNSDomain: "b.com",
 		},
 	}
@@ -47,13 +44,13 @@ func TestDNS(t *testing.T) {
 			maasClient: mockClientSetInterface,
 		}
 		mockClientSetInterface.EXPECT().DNSResources().Return(mockDNSResources)
-		mockDNSResources.EXPECT().List(context.Background(), gomock.Any()).Return(nil, nil)
+		mockDNSResources.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, nil)
 		mockClientSetInterface.EXPECT().DNSResources().Return(mockDNSResources)
 		mockDNSResources.EXPECT().Builder().Return(mockDNSResourceBuilder)
 		mockDNSResourceBuilder.EXPECT().WithFQDN(gomock.Any()).Return(mockDNSResourceBuilder)
 		mockDNSResourceBuilder.EXPECT().WithAddressTTL("10").Return(mockDNSResourceBuilder)
 		mockDNSResourceBuilder.EXPECT().WithIPAddresses(nil).Return(mockDNSResourceBuilder)
-		mockDNSResourceBuilder.EXPECT().Create(context.Background())
+		mockDNSResourceBuilder.EXPECT().Create(gomock.Any())
 		err := s.ReconcileDNS()
 
 		g.Expect(err).ToNot(HaveOccurred())
@@ -78,10 +75,10 @@ func TestDNS(t *testing.T) {
 		}
 
 		mockClientSetInterface.EXPECT().DNSResources().Return(mockDNSResources)
-		mockDNSResources.EXPECT().List(context.Background(), gomock.Any()).Return([]client.DNSResource{mockDNSResource}, nil)
+		mockDNSResources.EXPECT().List(gomock.Any(), gomock.Any()).Return([]maasclient.DNSResource{mockDNSResource}, nil)
 		mockDNSResource.EXPECT().Modifier().Return(mockDNSResourceModifier)
 		mockDNSResourceModifier.EXPECT().SetIPAddresses([]string{"1.1.1.1", "8.8.8.8"}).Return(mockDNSResourceModifier)
-		mockDNSResourceModifier.EXPECT().Modify(context.Background()).Return(mockDNSResource, nil)
+		mockDNSResourceModifier.EXPECT().Modify(gomock.Any()).Return(mockDNSResource, nil)
 
 		err := s.UpdateDNSAttachments([]string{"1.1.1.1", "8.8.8.8"})
 
@@ -94,7 +91,8 @@ func TestDNS(t *testing.T) {
 		mockClientSetInterface := mockclientset.NewMockClientSetInterface(ctrl)
 		mockDNSResources := mockclientset.NewMockDNSResources(ctrl)
 		mockDNSResource := mockclientset.NewMockDNSResource(ctrl)
-		mockIPAddress := mockclientset.NewMockIPAddress(ctrl)
+		mockIP1 := mockclientset.NewMockIPAddress(ctrl)
+		mockIP2 := mockclientset.NewMockIPAddress(ctrl)
 		s := &Service{
 			scope: &scope.ClusterScope{
 				Logger:      log,
@@ -104,19 +102,19 @@ func TestDNS(t *testing.T) {
 			maasClient: mockClientSetInterface,
 		}
 		mockClientSetInterface.EXPECT().DNSResources().Return(mockDNSResources)
-		mockDNSResources.EXPECT().List(context.Background(), gomock.Any()).Return([]client.DNSResource{mockDNSResource}, nil)
-		mockDNSResource.EXPECT().IPAddresses().Return([]client.IPAddress{mockIPAddress})
-		mockIPAddress.EXPECT().IP().Return(net.ParseIP("1.1.1.1"))
-		mockIPAddress.EXPECT().IP().Return(net.ParseIP("8.8.8.8"))
+		mockDNSResources.EXPECT().List(gomock.Any(), gomock.Any()).Return([]maasclient.DNSResource{mockDNSResource}, nil)
+		mockDNSResource.EXPECT().IPAddresses().Return([]maasclient.IPAddress{mockIP1, mockIP2})
+		mockIP1.EXPECT().IP().Return(net.ParseIP("1.1.1.1")).AnyTimes()
+		mockIP2.EXPECT().IP().Return(net.ParseIP("8.8.8.8")).AnyTimes()
 
-		res, err := s.MachineIsRegisteredWithAPIServerDNS(&infrav1beta1.Machine{
-			Addresses: []v1beta1.MachineAddress{
+		res, err := s.MachineIsRegisteredWithAPIServerDNS(&infrav1beta2.Machine{
+			Addresses: []clusterv1beta2.MachineAddress{
 				{
-					Type:    v1beta1.MachineInternalIP,
+					Type:    clusterv1beta2.MachineInternalIP,
 					Address: "1.1.1.1",
 				},
 				{
-					Type:    v1beta1.MachineInternalIP,
+					Type:    clusterv1beta2.MachineInternalIP,
 					Address: "8.8.8.8",
 				},
 			},

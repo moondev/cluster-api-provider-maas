@@ -10,7 +10,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1beta1
+package v1beta2
 
 import (
 	"context"
@@ -26,7 +26,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 )
 
-// log is for logging in this package.
 var maasclustertemplatelog = logf.Log.WithName("maasclustertemplate-resource")
 
 func (r *MaasClusterTemplate) SetupWebhookWithManager(mgr ctrl.Manager) error {
@@ -35,8 +34,8 @@ func (r *MaasClusterTemplate) SetupWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-//+kubebuilder:webhook:path=/mutate-infrastructure-cluster-x-k8s-io-v1beta1-maasclustertemplate,mutating=true,failurePolicy=fail,groups=infrastructure.cluster.x-k8s.io,resources=maasclustertemplates,verbs=create;update,versions=v1beta1,name=mmaasclustertemplate.kb.io,sideEffects=None,admissionReviewVersions=v1beta1;v1
-//+kubebuilder:webhook:verbs=create;update,path=/validate-infrastructure-cluster-x-k8s-io-v1beta1-maasclustertemplate,mutating=false,failurePolicy=fail,groups=infrastructure.cluster.x-k8s.io,resources=maasclustertemplates,versions=v1beta1,name=vmaasclustertemplate.kb.io,sideEffects=None,admissionReviewVersions=v1beta1;v1
+//+kubebuilder:webhook:path=/mutate-infrastructure-cluster-x-k8s-io-v1beta2-maasclustertemplate,mutating=true,failurePolicy=fail,groups=infrastructure.cluster.x-k8s.io,resources=maasclustertemplates,verbs=create;update,versions=v1beta2,name=mmaasclustertemplate.kb.io,sideEffects=None,admissionReviewVersions=v1beta1;v1
+//+kubebuilder:webhook:verbs=create;update,path=/validate-infrastructure-cluster-x-k8s-io-v1beta2-maasclustertemplate,mutating=false,failurePolicy=fail,groups=infrastructure.cluster.x-k8s.io,resources=maasclustertemplates,versions=v1beta2,name=vmaasclustertemplate.kb.io,sideEffects=None,admissionReviewVersions=v1beta1;v1
 
 var (
 	_ webhook.CustomDefaulter = &MaasClusterTemplate{}
@@ -97,7 +96,6 @@ func (r *MaasClusterTemplate) ValidateDelete(_ context.Context, obj runtime.Obje
 	return nil, nil
 }
 
-// isManagedTopologyClusterTemplate returns true if the MaasClusterTemplate is being used in a managed topology (ClusterClass) context.
 func isManagedTopologyClusterTemplate(r *MaasClusterTemplate) bool {
 	_, ok := r.Labels["topology.cluster.x-k8s.io/owned"]
 	return ok

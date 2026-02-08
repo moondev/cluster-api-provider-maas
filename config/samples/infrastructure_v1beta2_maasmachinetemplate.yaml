@@ -1,0 +1,10 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: MaasMachineTemplate
+metadata:
+  name: maasmachinetemplate-sample
+spec:
+  template:
+    spec:
+      image: ubuntu:22.04
+      minCPU: 2
+      minMemory: 4096

@@ -18,7 +18,7 @@ package v1beta1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1beta2 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/errors"
 )
 
@@ -89,10 +89,10 @@ type MaasMachineStatus struct {
 	DNSAttached bool `json:"dnsAttached,omitempty"`
 
 	// Addresses contains the associated addresses for the maas machine.
-	Addresses []clusterv1.MachineAddress `json:"addresses,omitempty"`
+	Addresses []clusterv1beta2.MachineAddress `json:"addresses,omitempty"`
 
 	// Conditions defines current service state of the MaasMachine.
-	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
+	Conditions clusterv1beta2.Conditions `json:"conditions,omitempty"`
 
 	// FailureReason will be set in the event that there is a terminal problem
 	// reconciling the Machine and will contain a succinct value suitable
@@ -108,7 +108,6 @@ type MaasMachineStatus struct {
 // +kubebuilder:resource:path=maasmachines,scope=Namespaced,categories=cluster-api
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
-//+kubebuilder:storageversion
 
 // MaasMachine is the Schema for the maasmachines API
 type MaasMachine struct {
@@ -119,11 +118,11 @@ type MaasMachine struct {
 	Status MaasMachineStatus `json:"status,omitempty"`
 }
 
-func (c *MaasMachine) GetConditions() clusterv1.Conditions {
+func (c *MaasMachine) GetConditions() clusterv1beta2.Conditions {
 	return c.Status.Conditions
 }
 
-func (c *MaasMachine) SetConditions(conditions clusterv1.Conditions) {
+func (c *MaasMachine) SetConditions(conditions clusterv1beta2.Conditions) {
 	c.Status.Conditions = conditions
 }
 

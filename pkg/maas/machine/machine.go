@@ -1,183 +1,135 @@
 package machine
 
 import (
+	"context"
 
-	"github.com/canonical/gomaasclient/client"
-	"github.com/canonical/gomaasclient/entity"
 	"github.com/pkg/errors"
-
 	"k8s.io/klog/v2/textlogger"
 
-	infrav1beta1 "github.com/moondev/cluster-api-provider-maas/api/v1beta1"
+	maasclient "github.com/spectrocloud/maas-client-go/maasclient"
+
+	infrav1beta2 "github.com/moondev/cluster-api-provider-maas/api/v1beta2"
 	"github.com/moondev/cluster-api-provider-maas/pkg/maas/scope"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1beta2 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 )
 
-// Service manages the MaaS machine
+// Service manages the MaaS machine using the Spectro MaaS client (v0.1.2-beta1+).
 type Service struct {
 	scope      *scope.MachineScope
-	maasClient *client.Client
+	maasClient maasclient.ClientSetInterface
 }
 
-// DNS service returns a new helper for managing a MaaS "DNS" (DNS client loadbalancing)
+// NewService returns a new machine service for the given scope using the Spectro MaaS client.
 func NewService(machineScope *scope.MachineScope) *Service {
 	return &Service{
 		scope:      machineScope,
-		maasClient: scope.NewMaasClient(machineScope.ClusterScope),
+		maasClient: scope.NewSpectroMaasClient(machineScope.ClusterScope),
 	}
 }
 
-func (s *Service) GetMachine(systemID string) (*infrav1beta1.Machine, error) {
-
+func (s *Service) GetMachine(systemID string) (*infrav1beta2.Machine, error) {
 	if systemID == "" {
 		return nil, nil
 	}
 
-	params := &entity.MachinesParams{
-		ID: []string{systemID},
-	}
-
-	machines, err := s.maasClient.Machines.Get(params)
+	ctx := context.Background()
+	m, err := s.maasClient.Machines().Machine(systemID).Get(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(machines) == 0 {
-		return nil, nil
-	}
-
-	machine := fromSDKTypeToMachine(&machines[0])
-
-	return machine, nil
+	return fromMaasClientMachine(m), nil
 }
 
 func (s *Service) ReleaseMachine(systemID string) error {
-	err := s.maasClient.Machines.Release([]string{systemID}, "released by cluster-api-provider-maas")
+	ctx := context.Background()
+	_, err := s.maasClient.Machines().Machine(systemID).Releaser().Release(ctx)
 	if err != nil {
 		return errors.Wrapf(err, "Unable to release machine")
 	}
-
 	return nil
 }
 
-func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, rerr error) {
+func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta2.Machine, rerr error) {
 	log := textlogger.NewLogger(textlogger.NewConfig())
-
 	mm := s.scope.MaasMachine
 
 	failureDomain := mm.Spec.FailureDomain
-	if failureDomain == nil {
-		failureDomain = s.scope.Machine.Spec.FailureDomain
+	if failureDomain == nil && s.scope.Machine.Spec.FailureDomain != "" {
+		fd := s.scope.Machine.Spec.FailureDomain
+		failureDomain = &fd
 	}
 
-
-	var m *entity.Machine
-
-	var err error
+	ctx := context.Background()
+	var deployed maasclient.Machine
 
 	if s.scope.GetProviderID() == "" {
 		// Allocate a new machine
-		allocateParams := &entity.MachineAllocateParams{
-			CPUCount: *mm.Spec.MinCPU,
-			Mem:      int64(*mm.Spec.MinMemoryInMB),
-		}
-
+		alloc := s.maasClient.Machines().Allocator().
+			WithCPUCount(*mm.Spec.MinCPU).
+			WithMemory(*mm.Spec.MinMemoryInMB)
 		if failureDomain != nil {
-			allocateParams.Zone = *failureDomain
+			alloc = alloc.WithZone(*failureDomain)
 		}
-
 		if mm.Spec.ResourcePool != nil {
-			allocateParams.Pool = *mm.Spec.ResourcePool
+			alloc = alloc.WithResourcePool(*mm.Spec.ResourcePool)
 		}
-
 		if len(mm.Spec.Tags) > 0 {
-			allocateParams.Tags = mm.Spec.Tags
+			alloc = alloc.WithTags(mm.Spec.Tags)
 		}
 
-		m, err = s.maasClient.Machines.Allocate(allocateParams)
+		m, err := alloc.Allocate(ctx)
 		if err != nil {
 			return nil, errors.Wrapf(err, "Unable to allocate machine")
 		}
 
-		s.scope.SetProviderID(m.SystemID, m.Zone.Name)
-		err = s.scope.PatchObject()
-		if err != nil {
+		s.scope.SetProviderID(m.SystemID(), m.Zone().Name())
+		if err := s.scope.PatchObject(); err != nil {
 			return nil, errors.Wrapf(err, "Unable to patch object")
 		}
-	} else {
-		// Get existing machine
-		params := &entity.MachinesParams{
-			ID: []string{s.scope.GetProviderID()},
-		}
-		machines, err := s.maasClient.Machines.Get(params)
-		if err != nil {
-			return nil, errors.Wrapf(err, "Unable to get machine")
-		}
-		if len(machines) == 0 {
-			return nil, errors.New("Machine not found")
-		}
-		m = &machines[0]
 	}
 
-	// Deploy the machine with ephemeral support
-	deployParams := &entity.MachineDeployParams{
-		UserData:     userDataB64,
-		DistroSeries: mm.Spec.Image,
-	}
+	// Deploy the machine (existing or just allocated)
+	systemID := s.scope.GetProviderID()
+	deployer := s.maasClient.Machines().Machine(systemID).Deployer().
+		SetUserData(userDataB64).
+		SetDistroSeries(mm.Spec.Image).
+		SetEphemeralDeploy(mm.Spec.Ephemeral)
 
-	// Add ephemeral deployment if specified
-	if mm.Spec.Ephemeral {
-		deployParams.EphemeralDeploy = true
-	}
-
-	deployingM, err := s.maasClient.Machine.Deploy(m.SystemID, deployParams)
+	deployed, err := deployer.Deploy(ctx)
 	if err != nil {
 		return nil, errors.Wrapf(err, "Unable to deploy machine")
 	}
 
-	log.Info("Machine deployed", "systemID", deployingM.SystemID, "hostname", deployingM.Hostname)
+	log.Info("Machine deployed", "systemID", deployed.SystemID(), "hostname", deployed.Hostname())
 
-	machine := fromSDKTypeToMachine(deployingM)
-
-	return machine, nil
+	return fromMaasClientMachine(deployed), nil
 }
 
-
-func fromSDKTypeToMachine(m *entity.Machine) *infrav1beta1.Machine {
-
-	machine := &infrav1beta1.Machine{
-		ID:               m.SystemID,
-		Hostname:         m.Hostname,
-		State:            infrav1beta1.MachineState(m.StatusName),
-		Powered:          m.PowerState == "on",
-		AvailabilityZone: m.Zone.Name,
+// fromMaasClientMachine builds the provider's Machine from the Spectro client Machine interface.
+func fromMaasClientMachine(m maasclient.Machine) *infrav1beta2.Machine {
+	machine := &infrav1beta2.Machine{
+		ID:               m.SystemID(),
+		Hostname:         m.Hostname(),
+		State:            infrav1beta2.MachineState(m.State()),
+		Powered:          m.PowerState() == "on",
+		AvailabilityZone: "",
 	}
-
-	// Add IP addresses if available
-	if m.IPAddresses != nil {
-		for _, addr := range m.IPAddresses {
-			machine.Addresses = append(machine.Addresses, clusterv1.MachineAddress{
-				Type:    clusterv1.MachineExternalIP,
-				Address: addr.String(),
+	if m.Zone() != nil {
+		machine.AvailabilityZone = m.Zone().Name()
+	}
+	for _, ip := range m.IPAddresses() {
+		if len(ip) > 0 && ip.String() != "" {
+			machine.Addresses = append(machine.Addresses, clusterv1beta2.MachineAddress{
+				Type:    clusterv1beta2.MachineExternalIP,
+				Address: ip.String(),
 			})
 		}
 	}
-
 	return machine
 }
 
 func (s *Service) PowerOnMachine() error {
-	// For the canonical client, we need to use the Machine API to power on
-	// This would typically involve calling a power action on the machine
-	// For now, we'll use a simple approach - the machine should be powered on during deployment
+	// Power-on is typically part of deploy in MaaS; no separate call needed.
 	return nil
 }
-
-//// ReconcileDNS reconciles the load balancers for the given cluster.
-//func (s *Service) ReconcileDNS() error {
-//	s.scope.V(2).Info("Reconciling DNS")
-//
-//	s.scope.SetDNSName("cluster1.maas")
-//	return nil
-//}
-//

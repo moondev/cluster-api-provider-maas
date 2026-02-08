@@ -28,13 +28,15 @@ import (
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	"sigs.k8s.io/cluster-api/controllers/remote"
+	clusterv1beta2 "sigs.k8s.io/cluster-api/api/core/v1beta2"
+	"sigs.k8s.io/cluster-api/controllers/clustercache"
 	capierrors "sigs.k8s.io/cluster-api/errors"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/annotations"
 	"sigs.k8s.io/cluster-api/util/conditions"
+	v1beta1conditions "sigs.k8s.io/cluster-api/util/conditions/deprecated/v1beta1"
 	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -43,8 +45,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	//infrav1alpha3 "github.com/moondev/cluster-api-provider-maas/api/v1alpha3"
-	infrav1beta1 "github.com/moondev/cluster-api-provider-maas/api/v1beta1"
+	infrav1beta2 "github.com/moondev/cluster-api-provider-maas/api/v1beta2"
 	maasdns "github.com/moondev/cluster-api-provider-maas/pkg/maas/dns"
 	maasmachine "github.com/moondev/cluster-api-provider-maas/pkg/maas/machine"
 	"github.com/moondev/cluster-api-provider-maas/pkg/maas/scope"
@@ -58,7 +59,7 @@ type MaasMachineReconciler struct {
 	Log      logr.Logger
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
-	Tracker  *remote.ClusterCacheTracker
+	ClusterCache clustercache.ClusterCache
 }
 
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasmachines,verbs=get;list;watch;create;update;patch;delete
@@ -71,7 +72,7 @@ func (r *MaasMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	log := r.Log.WithValues("maasmachine", req.Name)
 
 	// Fetch the MaasMachine instance.
-	maasMachine := &infrav1beta1.MaasMachine{}
+	maasMachine := &infrav1beta2.MaasMachine{}
 	err := r.Get(ctx, req.NamespacedName, maasMachine)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -105,7 +106,7 @@ func (r *MaasMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	log = log.WithValues("cluster", cluster.Name)
 
 	// Get Infra cluster
-	maasCluster := &infrav1beta1.MaasCluster{}
+	maasCluster := &infrav1beta2.MaasCluster{}
 	infraClusterName := client.ObjectKey{
 		Namespace: maasMachine.Namespace,
 		Name:      cluster.Spec.InfrastructureRef.Name,
@@ -122,7 +123,7 @@ func (r *MaasMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		Logger:         log,
 		Cluster:        cluster,
 		MaasCluster:    maasCluster,
-		Tracker:        r.Tracker,
+		ClusterCache:   r.ClusterCache,
 		ControllerName: "maasmachine",
 	})
 	if err != nil {
@@ -133,7 +134,7 @@ func (r *MaasMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	machineScope, err := scope.NewMachineScope(scope.MachineScopeParams{
 		Logger:       log,
 		Client:       r.Client,
-		Tracker:      r.Tracker,
+		ClusterCache: r.ClusterCache,
 		Cluster:      cluster,
 		ClusterScope: clusterScope,
 		Machine:      machine,
@@ -177,7 +178,7 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 	if m == nil {
 		machineScope.V(2).Info("Unable to locate MaaS instance by ID or tags", "system-id", machineScope.GetInstanceID())
 		r.Recorder.Eventf(maasMachine, corev1.EventTypeWarning, "NoMachineFound", "Unable to find matching MaaS machine")
-		controllerutil.RemoveFinalizer(maasMachine, infrav1beta1.MachineFinalizer)
+		controllerutil.RemoveFinalizer(maasMachine, infrav1beta2.MachineFinalizer)
 		return ctrl.Result{}, nil
 	}
 
@@ -196,11 +197,11 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 		return ctrl.Result{}, err
 	}
 
-	conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, clusterv1.DeletedReason, clusterv1.ConditionSeverityInfo, "")
+	v1beta1conditions.MarkFalse(machineScope.MaasMachine, infrav1beta2.MachineDeployedCondition, clusterv1beta2.ObjectDeletedReason, clusterv1beta2.ConditionSeverityInfo, "")
 	r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeNormal, "SuccessfulRelease", "Released instance %q", m.ID)
 
 	// Machine is deleted so remove the finalizer.
-	controllerutil.RemoveFinalizer(maasMachine, infrav1beta1.MachineFinalizer)
+	controllerutil.RemoveFinalizer(maasMachine, infrav1beta2.MachineFinalizer)
 
 	//// v1alpah3 MAASMachine finalizer
 	//// Machine is deleted so remove the finalizer.
@@ -210,7 +211,7 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 }
 
 // findInstance queries the EC2 apis and retrieves the instance if it exists, returns nil otherwise.
-func (r *MaasMachineReconciler) findMachine(machineScope *scope.MachineScope, machineSvc *maasmachine.Service) (*infrav1beta1.Machine, error) {
+func (r *MaasMachineReconciler) findMachine(machineScope *scope.MachineScope, machineSvc *maasmachine.Service) (*infrav1beta2.Machine, error) {
 
 	id := machineScope.GetInstanceID()
 	if id == nil || *id == "" {
@@ -232,21 +233,22 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	maasMachine := machineScope.MaasMachine
 
 	// Add finalizer first if not exist to avoid the race condition between init and delete
-	if !controllerutil.ContainsFinalizer(maasMachine, infrav1beta1.MachineFinalizer) {
-		controllerutil.AddFinalizer(maasMachine, infrav1beta1.MachineFinalizer)
+	if !controllerutil.ContainsFinalizer(maasMachine, infrav1beta2.MachineFinalizer) {
+		controllerutil.AddFinalizer(maasMachine, infrav1beta2.MachineFinalizer)
 		return ctrl.Result{}, nil
 	}
 
-	if !machineScope.Cluster.Status.InfrastructureReady {
+	infraReady := conditions.Get(machineScope.Cluster, clusterv1beta2.InfrastructureReadyCondition)
+	if infraReady == nil || infraReady.Status != metav1.ConditionTrue {
 		machineScope.Info("Cluster infrastructure is not ready yet")
-		conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.WaitingForClusterInfrastructureReason, clusterv1.ConditionSeverityInfo, "")
+		v1beta1conditions.MarkFalse(machineScope.MaasMachine, infrav1beta2.MachineDeployedCondition, infrav1beta2.WaitingForClusterInfrastructureReason, clusterv1beta2.ConditionSeverityInfo, "")
 		return ctrl.Result{}, nil
 	}
 
 	// Make sure bootstrap data is available and populated.
 	if machineScope.Machine.Spec.Bootstrap.DataSecretName == nil {
 		machineScope.Info("Bootstrap data secret reference is not yet available")
-		conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.WaitingForBootstrapDataReason, clusterv1.ConditionSeverityInfo, "")
+		v1beta1conditions.MarkFalse(machineScope.MaasMachine, infrav1beta2.MachineDeployedCondition, infrav1beta2.WaitingForBootstrapDataReason, clusterv1beta2.ConditionSeverityInfo, "")
 		return ctrl.Result{}, nil
 	}
 
@@ -256,17 +258,17 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	m, err := r.findMachine(machineScope, machineSvc)
 	if err != nil {
 		machineScope.Error(err, "unable to find m")
-		conditions.MarkUnknown(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineNotFoundReason, err.Error())
+		v1beta1conditions.MarkUnknown(machineScope.MaasMachine, infrav1beta2.MachineDeployedCondition, infrav1beta2.MachineNotFoundReason, "%s", err.Error())
 		return ctrl.Result{}, err
 	}
 
 	// Create new m
 	// TODO(saamalik) confirm that we'll never "recreate" a m; e.g: findMachine should always return err
 	// if there used to be a m
-	if m == nil || !(m.State == infrav1beta1.MachineStateDeployed || m.State == infrav1beta1.MachineStateDeploying) {
+	if m == nil || !(m.State == infrav1beta2.MachineStateDeployed || m.State == infrav1beta2.MachineStateDeploying) {
 		// Avoid a flickering condition between Started and Failed if there's a persistent failure with createInstance
-		if conditions.GetReason(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition) != infrav1beta1.MachineDeployFailedReason {
-			conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployStartedReason, clusterv1.ConditionSeverityInfo, "")
+		if v1beta1conditions.GetReason(machineScope.MaasMachine, infrav1beta2.MachineDeployedCondition) != infrav1beta2.MachineDeployFailedReason {
+			v1beta1conditions.MarkFalse(machineScope.MaasMachine, infrav1beta2.MachineDeployedCondition, infrav1beta2.MachineDeployStartedReason, clusterv1beta2.ConditionSeverityInfo, "")
 			if patchErr := machineScope.PatchObject(); patchErr != nil {
 				machineScope.Error(patchErr, "failed to patch conditions")
 				return ctrl.Result{}, patchErr
@@ -275,7 +277,7 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 		m, err = r.deployMachine(machineScope, machineSvc)
 		if err != nil {
 			machineScope.Error(err, "unable to create m")
-			conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployFailedReason, clusterv1.ConditionSeverityError, err.Error())
+			v1beta1conditions.MarkFalse(machineScope.MaasMachine, infrav1beta2.MachineDeployedCondition, infrav1beta2.MachineDeployFailedReason, clusterv1beta2.ConditionSeverityError, "%s", err.Error())
 			return ctrl.Result{}, err
 		}
 	}
@@ -297,15 +299,15 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	}
 
 	switch s := m.State; {
-	case s == infrav1beta1.MachineStateReady, s == infrav1beta1.MachineStateDiskErasing, s == infrav1beta1.MachineStateReleasing, s == infrav1beta1.MachineStateNew:
+	case s == infrav1beta2.MachineStateReady, s == infrav1beta2.MachineStateDiskErasing, s == infrav1beta2.MachineStateReleasing, s == infrav1beta2.MachineStateNew:
 		machineScope.SetNotReady()
 		machineScope.Info("Unexpected Maas m termination")
 		r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "MachineUnexpectedTermination", "Unexpected Maas m termination")
-		conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineTerminatedReason, clusterv1.ConditionSeverityError, "")
+		v1beta1conditions.MarkFalse(machineScope.MaasMachine, infrav1beta2.MachineDeployedCondition, infrav1beta2.MachineTerminatedReason, clusterv1beta2.ConditionSeverityError, "")
 		machineScope.SetFailureReason(capierrors.UpdateMachineError)
 		machineScope.SetFailureMessage(errors.Errorf("Maas machine state %q is unexpected", m.State))
 	case machineScope.MachineIsInKnownState() && !m.Powered:
-		if *machineScope.GetMachineState() == infrav1beta1.MachineStateDeployed {
+		if *machineScope.GetMachineState() == infrav1beta2.MachineStateDeployed {
 			machineScope.Info("Deployed machine is powered off trying power on")
 			if err := machineSvc.PowerOnMachine(); err != nil {
 				return ctrl.Result{}, errors.Wrap(err, "unable to power on deployed machine")
@@ -316,20 +318,20 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 
 		machineScope.SetNotReady()
 		machineScope.Info("Machine is powered off!")
-		conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachinePoweredOffReason, clusterv1.ConditionSeverityWarning, "")
-	case s == infrav1beta1.MachineStateDeploying, s == infrav1beta1.MachineStateAllocated:
+		v1beta1conditions.MarkFalse(machineScope.MaasMachine, infrav1beta2.MachineDeployedCondition, infrav1beta2.MachinePoweredOffReason, clusterv1beta2.ConditionSeverityWarning, "")
+	case s == infrav1beta2.MachineStateDeploying, s == infrav1beta2.MachineStateAllocated:
 		machineScope.SetNotReady()
-		conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployingReason, clusterv1.ConditionSeverityWarning, "")
-	case s == infrav1beta1.MachineStateDeployed:
+		v1beta1conditions.MarkFalse(machineScope.MaasMachine, infrav1beta2.MachineDeployedCondition, infrav1beta2.MachineDeployingReason, clusterv1beta2.ConditionSeverityWarning, "")
+	case s == infrav1beta2.MachineStateDeployed:
 		machineScope.SetReady()
-		conditions.MarkTrue(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition)
+		v1beta1conditions.MarkTrue(machineScope.MaasMachine, infrav1beta2.MachineDeployedCondition)
 	default:
 		machineScope.SetNotReady()
 		machineScope.Info("MaaS m state is undefined", "state", m.State)
 		r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "MachineUnhandledState", "MaaS m state is undefined")
 		machineScope.SetFailureReason(capierrors.UpdateMachineError)
 		machineScope.SetFailureMessage(errors.Errorf("MaaS m state %q is undefined", m.State))
-		conditions.MarkUnknown(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, "", "")
+		v1beta1conditions.MarkUnknown(machineScope.MaasMachine, infrav1beta2.MachineDeployedCondition, "", "")
 	}
 
 	// tasks that can take place during all known instance states
@@ -368,7 +370,7 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	return ctrl.Result{}, nil
 }
 
-func (r *MaasMachineReconciler) deployMachine(machineScope *scope.MachineScope, machineSvc *maasmachine.Service) (*infrav1beta1.Machine, error) {
+func (r *MaasMachineReconciler) deployMachine(machineScope *scope.MachineScope, machineSvc *maasmachine.Service) (*infrav1beta2.Machine, error) {
 	machineScope.Info("Deploying on MaaS machine")
 
 	userDataB64, userDataErr := r.resolveUserData(machineScope)
@@ -395,7 +397,7 @@ func (r *MaasMachineReconciler) resolveUserData(machineScope *scope.MachineScope
 	return base64.StdEncoding.EncodeToString(userData), nil
 }
 
-func (r *MaasMachineReconciler) reconcileDNSAttachment(machineScope *scope.MachineScope, clusterScope *scope.ClusterScope, m *infrav1beta1.Machine) error {
+func (r *MaasMachineReconciler) reconcileDNSAttachment(machineScope *scope.MachineScope, clusterScope *scope.ClusterScope, m *infrav1beta2.Machine) error {
 	if !machineScope.IsControlPlane() {
 		return nil
 	}
@@ -416,7 +418,7 @@ func (r *MaasMachineReconciler) reconcileDNSAttachment(machineScope *scope.Machi
 
 		if registered {
 			// Wait for Cluster to delete this guy
-			conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.DNSAttachedCondition, infrav1beta1.DNSDetachPending, clusterv1.ConditionSeverityWarning, "")
+			v1beta1conditions.MarkFalse(machineScope.MaasMachine, infrav1beta2.DNSAttachedCondition, infrav1beta2.DNSDetachPending, clusterv1beta2.ConditionSeverityWarning, "")
 			machineScope.Info("machine waiting for cluster to de-register DNS")
 			return ErrRequeueDNS
 		}
@@ -435,13 +437,13 @@ func (r *MaasMachineReconciler) reconcileDNSAttachment(machineScope *scope.Machi
 	machineScope.MaasMachine.Status.DNSAttached = registered
 
 	if !registered {
-		conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.DNSAttachedCondition, infrav1beta1.DNSAttachPending, clusterv1.ConditionSeverityWarning, "")
+		v1beta1conditions.MarkFalse(machineScope.MaasMachine, infrav1beta2.DNSAttachedCondition, infrav1beta2.DNSAttachPending, clusterv1beta2.ConditionSeverityWarning, "")
 		// Wait for Cluster to add me
 		machineScope.Info("machine waiting for cluster to register DNS")
 		return ErrRequeueDNS
 	}
 
-	conditions.MarkTrue(machineScope.MaasMachine, infrav1beta1.DNSAttachedCondition)
+	v1beta1conditions.MarkTrue(machineScope.MaasMachine, infrav1beta2.DNSAttachedCondition)
 
 	// Already registered - nothing more to do
 	return nil
@@ -449,24 +451,24 @@ func (r *MaasMachineReconciler) reconcileDNSAttachment(machineScope *scope.Machi
 
 // SetupWithManager will add watches for this controller
 func (r *MaasMachineReconciler) SetupWithManager(_ context.Context, mgr ctrl.Manager, options controller.Options) error {
-	clusterToMaasMachines, err := util.ClusterToTypedObjectsMapper(mgr.GetClient(), &infrav1beta1.MaasMachineList{}, mgr.GetScheme())
+	clusterToMaasMachines, err := util.ClusterToTypedObjectsMapper(mgr.GetClient(), &infrav1beta2.MaasMachineList{}, mgr.GetScheme())
 	if err != nil {
 		return err
 	}
 
 	err = ctrl.NewControllerManagedBy(mgr).
-		For(&infrav1beta1.MaasMachine{}).
+		For(&infrav1beta2.MaasMachine{}).
 		WithOptions(options).
 		Watches(
-			&clusterv1.Machine{},
-			handler.EnqueueRequestsFromMapFunc(util.MachineToInfrastructureMapFunc(infrav1beta1.GroupVersion.WithKind("MaasMachine"))),
+			&clusterv1beta2.Machine{},
+			handler.EnqueueRequestsFromMapFunc(util.MachineToInfrastructureMapFunc(infrav1beta2.GroupVersion.WithKind("MaasMachine"))),
 		).
 		Watches(
-			&infrav1beta1.MaasCluster{},
+			&infrav1beta2.MaasCluster{},
 			handler.EnqueueRequestsFromMapFunc(r.MaasClusterToMaasMachines),
 		).
 		Watches(
-			&clusterv1.Cluster{},
+			&clusterv1beta2.Cluster{},
 			handler.EnqueueRequestsFromMapFunc(clusterToMaasMachines),
 		).
 		WithEventFilter(predicates.ResourceNotPaused(mgr.GetScheme(), r.Log)).
@@ -483,7 +485,7 @@ func (r *MaasMachineReconciler) SetupWithManager(_ context.Context, mgr ctrl.Man
 // requests for reconciliation of MaasMachines.
 func (r *MaasMachineReconciler) MaasClusterToMaasMachines(_ context.Context, o client.Object) []ctrl.Request {
 	var result []ctrl.Request
-	c, ok := o.(*infrav1beta1.MaasCluster)
+	c, ok := o.(*infrav1beta2.MaasCluster)
 	if !ok {
 		panic(fmt.Sprintf("Expected a MaasCluster but got a %T", o))
 	}
@@ -496,8 +498,8 @@ func (r *MaasMachineReconciler) MaasClusterToMaasMachines(_ context.Context, o c
 		return result
 	}
 
-	labels := map[string]string{clusterv1.ClusterNameLabel: cluster.Name}
-	machineList := &clusterv1.MachineList{}
+	labels := map[string]string{clusterv1beta2.ClusterNameLabel: cluster.Name}
+	machineList := &clusterv1beta2.MachineList{}
 	if err := r.Client.List(context.TODO(), machineList, client.InNamespace(c.Namespace), client.MatchingLabels(labels)); err != nil {
 		return nil
 	}
@@ -505,7 +507,7 @@ func (r *MaasMachineReconciler) MaasClusterToMaasMachines(_ context.Context, o c
 		if m.Spec.InfrastructureRef.Name == "" {
 			continue
 		}
-		name := client.ObjectKey{Namespace: m.Spec.InfrastructureRef.Namespace, Name: m.Spec.InfrastructureRef.Name}
+		name := client.ObjectKey{Namespace: m.Namespace, Name: m.Spec.InfrastructureRef.Name}
 		result = append(result, ctrl.Request{NamespacedName: name})
 	}
 

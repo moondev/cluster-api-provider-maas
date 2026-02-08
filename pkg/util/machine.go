@@ -21,9 +21,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/moondev/cluster-api-provider-maas/api/v1beta1"
+	infrav1beta2 "github.com/moondev/cluster-api-provider-maas/api/v1beta2"
 	"github.com/pkg/errors"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1beta2 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -55,10 +55,10 @@ var providerIDRegex = regexp.MustCompile("^[^:]+://.*[^/]$")
 func GetMAASMachinesInCluster(
 	ctx context.Context,
 	controllerClient client.Client,
-	namespace, clusterName string) ([]*v1beta1.MaasMachine, error) {
+	namespace, clusterName string) ([]*infrav1beta2.MaasMachine, error) {
 
-	labels := map[string]string{clusterv1.ClusterNameLabel: clusterName}
-	machineList := &v1beta1.MaasMachineList{}
+	labels := map[string]string{clusterv1beta2.ClusterNameLabel: clusterName}
+	machineList := &infrav1beta2.MaasMachineList{}
 
 	if err := controllerClient.List(
 		ctx, machineList,
@@ -67,7 +67,7 @@ func GetMAASMachinesInCluster(
 		return nil, err
 	}
 
-	machines := make([]*v1beta1.MaasMachine, len(machineList.Items))
+	machines := make([]*infrav1beta2.MaasMachine, len(machineList.Items))
 	for i := range machineList.Items {
 		machines[i] = &machineList.Items[i]
 	}

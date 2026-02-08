@@ -45,13 +45,16 @@ func TestAPIs(t *testing.T) {
 }
 
 func TestMain(m *testing.M) {
-	setup()
+	if !setup() {
+		os.Exit(0)
+	}
 	defer teardown()
 	code := m.Run()
 	os.Exit(code)
 }
 
-func setup() {
+// setup returns false if envtest is unavailable (e.g. missing etcd/kube-apiserver), so tests are skipped.
+func setup() bool {
 	utilruntime.Must(AddToScheme(scheme.Scheme))
 	testEnvConfig := helpers.NewTestEnvironmentConfiguration([]string{
 		path.Join("config", "crd", "bases"),
@@ -60,7 +63,8 @@ func setup() {
 	var err error
 	testEnv, err = testEnvConfig.Build()
 	if err != nil {
-		panic(err)
+		fmt.Fprintf(os.Stderr, "Skipping api/v1beta1 integration tests (envtest binaries not available): %v\n", err)
+		return false
 	}
 	if err := (&MaasCluster{}).SetupWebhookWithManager(testEnv); err != nil {
 		panic(fmt.Sprintf("Unable to setup MAASCluster webhook: %v", err))
@@ -79,9 +83,13 @@ func setup() {
 		}
 	}()
 	testEnv.WaitForWebhooks()
+	return true
 }
 
 func teardown() {
+	if testEnv == nil {
+		return
+	}
 	if err := testEnv.Stop(); err != nil {
 		panic(fmt.Sprintf("Failed to stop envtest: %v", err))
 	}

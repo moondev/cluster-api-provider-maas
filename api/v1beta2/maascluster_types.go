@@ -1,6 +1,4 @@
 /*
-
-
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -14,7 +12,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1beta1
+package v1beta2
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -22,61 +20,40 @@ import (
 )
 
 const (
-	// ClusterFinalizer allows MaasClusterReconciler to clean up resources associated with MaasCluster before
-	// removing it from the apiserver.
 	ClusterFinalizer = "maascluster.infrastructure.cluster.x-k8s.io"
 )
 
 // MaasClusterSpec defines the desired state of MaasCluster
 type MaasClusterSpec struct {
-	// DNSDomain configures the MaaS domain to create the cluster on (e.g maas)
-	// +kubebuilder:validation:MinLength=1
 	DNSDomain string `json:"dnsDomain"`
 
-	// ControlPlaneEndpoint represents the endpoint used to communicate with the control plane.
 	// +optional
-	ControlPlaneEndpoint APIEndpoint `json:"controlPlaneEndpoint"`
+	ControlPlaneEndpoint APIEndpoint `json:"controlPlaneEndpoint,omitempty"`
 
-	// FailureDomains are not usually defined on the spec.
-	// but useful for MaaS since we can limit the domains to these
 	// +optional
 	FailureDomains []string `json:"failureDomains,omitempty"`
 }
 
 // MaasClusterStatus defines the observed state of MaasCluster
 type MaasClusterStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-	// Ready denotes that the maas cluster (infrastructure) is ready.
-	// +kubebuilder:default=false
 	Ready bool `json:"ready"`
 
-	// Network represents the network
-	Network Network `json:"network,omitempty"`
-
-	// FailureDomains don't mean much in CAPMAAS since it's all local, but we can see how the rest of cluster API
-	// will use this if we populate it.
-	FailureDomains []clusterv1beta2.FailureDomain `json:"failureDomains,omitempty"`
-
-	// Conditions defines current service state of the MaasCluster.
-	// +optional
-	Conditions clusterv1beta2.Conditions `json:"conditions,omitempty"`
+	Network         Network                         `json:"network,omitempty"`
+	FailureDomains  []clusterv1beta2.FailureDomain  `json:"failureDomains,omitempty"`
+	Conditions      clusterv1beta2.Conditions       `json:"conditions,omitempty"`
 }
 
 // Network encapsulates the Cluster Network
 type Network struct {
-	// DNSName is the Kubernetes api server name
 	DNSName string `json:"dnsName,omitempty"`
 }
 
-// APIEndpoint represents a reachable Kubernetes API endpoint.
+// APIEndpoint represents a reachable Kubernetes API endpoint (Host and Port optional per CAPI v1beta2).
 type APIEndpoint struct {
-
-	// Host is the hostname on which the API server is serving.
-	Host string `json:"host"`
-
-	// Port is the port on which the API server is serving.
-	Port int `json:"port"`
+	// +optional
+	Host string `json:"host,omitempty"`
+	// +optional
+	Port int `json:"port,omitempty"`
 }
 
 // IsZero returns true if both host and port are zero values.
@@ -85,8 +62,9 @@ func (in APIEndpoint) IsZero() bool {
 }
 
 // +kubebuilder:resource:path=maasclusters,scope=Namespaced,categories=cluster-api
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:storageversion
 
 // MaasCluster is the Schema for the maasclusters API
 type MaasCluster struct {
@@ -105,7 +83,17 @@ func (in *MaasCluster) SetConditions(conditions clusterv1beta2.Conditions) {
 	in.Status.Conditions = conditions
 }
 
-//+kubebuilder:object:root=true
+// GetV1Beta1Conditions returns the list of conditions for the deprecated v1beta1 conditions API.
+func (in *MaasCluster) GetV1Beta1Conditions() clusterv1beta2.Conditions {
+	return in.Status.Conditions
+}
+
+// SetV1Beta1Conditions sets the list of conditions for the deprecated v1beta1 conditions API.
+func (in *MaasCluster) SetV1Beta1Conditions(conditions clusterv1beta2.Conditions) {
+	in.Status.Conditions = conditions
+}
+
+// +kubebuilder:object:root=true
 
 // MaasClusterList contains a list of MaasCluster
 type MaasClusterList struct {

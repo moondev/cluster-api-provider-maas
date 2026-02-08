@@ -1,6 +1,4 @@
 /*
-
-
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -14,7 +12,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1beta1
+package v1beta2
 
 import (
 	"context"
@@ -30,7 +28,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 )
 
-// log is for logging in this package.
 var maasclusterlog = logf.Log.WithName("maascluster-resource")
 
 func (r *MaasCluster) SetupWebhookWithManager(mgr ctrl.Manager) error {
@@ -39,8 +36,8 @@ func (r *MaasCluster) SetupWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-//+kubebuilder:webhook:path=/mutate-infrastructure-cluster-x-k8s-io-v1beta1-maascluster,mutating=true,failurePolicy=fail,groups=infrastructure.cluster.x-k8s.io,resources=maasclusters,verbs=create;update,versions=v1beta1,name=mmaascluster.kb.io,sideEffects=None,admissionReviewVersions=v1beta1;v1
-//+kubebuilder:webhook:verbs=create;update,path=/validate-infrastructure-cluster-x-k8s-io-v1beta1-maascluster,mutating=false,failurePolicy=fail,groups=infrastructure.cluster.x-k8s.io,resources=maasclusters,versions=v1beta1,name=vmaascluster.kb.io,sideEffects=None,admissionReviewVersions=v1beta1;v1
+//+kubebuilder:webhook:path=/mutate-infrastructure-cluster-x-k8s-io-v1beta2-maascluster,mutating=true,failurePolicy=fail,groups=infrastructure.cluster.x-k8s.io,resources=maasclusters,verbs=create;update,versions=v1beta2,name=mmaascluster.kb.io,sideEffects=None,admissionReviewVersions=v1beta1;v1
+//+kubebuilder:webhook:verbs=create;update,path=/validate-infrastructure-cluster-x-k8s-io-v1beta2-maascluster,mutating=false,failurePolicy=fail,groups=infrastructure.cluster.x-k8s.io,resources=maasclusters,versions=v1beta2,name=vmaascluster.kb.io,sideEffects=None,admissionReviewVersions=v1beta1;v1
 
 var (
 	_ webhook.CustomDefaulter = &MaasCluster{}
@@ -98,9 +95,7 @@ func (r *MaasCluster) ValidateDelete(_ context.Context, obj runtime.Object) (adm
 	return nil, nil
 }
 
-// isManagedTopology returns true if the MaasCluster is being used in a managed topology (ClusterClass) context.
 func isManagedTopology(r *MaasCluster) bool {
-	// Managed topology clusters have the label: "topology.cluster.x-k8s.io/owned: ""
 	_, ok := r.Labels["topology.cluster.x-k8s.io/owned"]
 	return ok
 }

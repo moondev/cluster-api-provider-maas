@@ -2,7 +2,7 @@ package v1beta1
 
 import (
 	"k8s.io/apimachinery/pkg/util/sets"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1beta2 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 )
 
 // MachineState describes the state of an MAAS Machine.
@@ -90,5 +90,5 @@ type Machine struct {
 	AvailabilityZone string
 
 	// Addresses contains the MAAS Machine associated addresses.
-	Addresses []clusterv1.MachineAddress
+	Addresses []clusterv1beta2.MachineAddress
 }

@@ -10,7 +10,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1beta1
+package v1beta2
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -26,18 +26,18 @@ type MaasClusterTemplateSpec struct {
 
 // MaasClusterTemplateResource describes the data needed to create a MaasCluster from a template
 type MaasClusterTemplateResource struct {
-	// Spec is the specification of the desired behavior of the cluster.
 	Spec MaasClusterSpec `json:"spec"`
 }
 
 // MaasClusterTemplate is the Schema for the maasclustertemplates API
 // +kubebuilder:object:root=true
+// +kubebuilder:storageversion
 type MaasClusterTemplate struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	Spec   MaasClusterTemplateSpec `json:"spec,omitempty"`
-	Status MaasClusterStatus       `json:"status,omitempty"`
+	Status MaasClusterStatus      `json:"status,omitempty"`
 }
 
 // MaasClusterTemplateList contains a list of MaasClusterTemplate

@@ -1,6 +1,4 @@
 /*
-
-
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -14,7 +12,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1beta1
+package v1beta2
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -27,13 +25,13 @@ type MaasMachineTemplateSpec struct {
 
 // MaasMachineTemplateResource describes the data needed to create a MaasMachine from a template
 type MaasMachineTemplateResource struct {
-	// Spec is the specification of the desired behavior of the machine.
 	Spec MaasMachineSpec `json:"spec"`
 }
 
 // +kubebuilder:resource:path=maasmachinetemplates,scope=Namespaced,categories=cluster-api
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:storageversion
 
 // MaasMachineTemplate is the Schema for the maasmachinetemplates API
 type MaasMachineTemplate struct {
@@ -43,7 +41,7 @@ type MaasMachineTemplate struct {
 	Spec MaasMachineTemplateSpec `json:"spec,omitempty"`
 }
 
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
 
 // MaasMachineTemplateList contains a list of MaasMachineTemplate
 type MaasMachineTemplateList struct {

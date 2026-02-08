@@ -24,15 +24,15 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
-	infrav1beta1 "github.com/moondev/cluster-api-provider-maas/api/v1beta1"
+	infrav1beta2 "github.com/moondev/cluster-api-provider-maas/api/v1beta2"
 	"github.com/pkg/errors"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	"sigs.k8s.io/cluster-api/controllers/remote"
+	clusterv1beta2 "sigs.k8s.io/cluster-api/api/core/v1beta2"
+	"sigs.k8s.io/cluster-api/controllers/clustercache"
 	"sigs.k8s.io/cluster-api/util"
-	"sigs.k8s.io/cluster-api/util/conditions"
+	v1beta1conditions "sigs.k8s.io/cluster-api/util/conditions/deprecated/v1beta1"
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -46,10 +46,10 @@ const (
 type ClusterScopeParams struct {
 	Client              client.Client
 	Logger              logr.Logger
-	Cluster             *clusterv1.Cluster
-	MaasCluster         *infrav1beta1.MaasCluster
+	Cluster             *clusterv1beta2.Cluster
+	MaasCluster         *infrav1beta2.MaasCluster
 	ControllerName      string
-	Tracker             *remote.ClusterCacheTracker
+	ClusterCache        clustercache.ClusterCache
 	ClusterEventChannel chan event.GenericEvent
 }
 
@@ -59,10 +59,10 @@ type ClusterScope struct {
 	client      client.Client
 	patchHelper *patch.Helper
 
-	Cluster             *clusterv1.Cluster
-	MaasCluster         *infrav1beta1.MaasCluster
+	Cluster             *clusterv1beta2.Cluster
+	MaasCluster         *infrav1beta2.MaasCluster
 	controllerName      string
-	tracker             *remote.ClusterCacheTracker
+	clusterCache        clustercache.ClusterCache
 	clusterEventChannel chan event.GenericEvent
 }
 
@@ -81,7 +81,7 @@ func NewClusterScope(params ClusterScopeParams) (*ClusterScope, error) {
 		MaasCluster:         params.MaasCluster,
 		patchHelper:         helper,
 		controllerName:      params.ControllerName,
-		tracker:             params.Tracker,
+		clusterCache:        params.ClusterCache,
 		clusterEventChannel: params.ClusterEventChannel,
 	}, nil
 }
@@ -89,23 +89,22 @@ func NewClusterScope(params ClusterScopeParams) (*ClusterScope, error) {
 // PatchObject persists the cluster configuration and status.
 func (s *ClusterScope) PatchObject() error {
 	// Always update the readyCondition by summarizing the state of other conditions.
-	// A step counter is added to represent progress during the provisioning process (instead we are hiding it during the deletion process).
-	conditions.SetSummary(s.MaasCluster,
-		conditions.WithConditions(
-			infrav1beta1.DNSReadyCondition,
-			infrav1beta1.APIServerAvailableCondition,
+	v1beta1conditions.SetSummary(s.MaasCluster,
+		v1beta1conditions.WithConditions(
+			infrav1beta2.DNSReadyCondition,
+			infrav1beta2.APIServerAvailableCondition,
 		),
-		conditions.WithStepCounterIf(s.MaasCluster.ObjectMeta.DeletionTimestamp.IsZero()),
+		v1beta1conditions.WithStepCounterIf(s.MaasCluster.ObjectMeta.DeletionTimestamp.IsZero()),
 	)
 
 	// Patch the object, ignoring conflicts on the conditions owned by this controller.
 	return s.patchHelper.Patch(
 		context.TODO(),
 		s.MaasCluster,
-		patch.WithOwnedConditions{Conditions: []clusterv1.ConditionType{
-			clusterv1.ReadyCondition,
-			infrav1beta1.DNSReadyCondition,
-			infrav1beta1.APIServerAvailableCondition,
+		patch.WithOwnedConditions{Conditions: []string{
+			string(clusterv1beta2.ReadyCondition),
+			string(infrav1beta2.DNSReadyCondition),
+			string(infrav1beta2.APIServerAvailableCondition),
 		}},
 	)
 }
@@ -117,8 +116,8 @@ func (s *ClusterScope) Close() error {
 
 // APIServerPort returns the APIServerPort to use when creating the load balancer.
 func (s *ClusterScope) APIServerPort() int {
-	if s.Cluster.Spec.ClusterNetwork != nil && s.Cluster.Spec.ClusterNetwork.APIServerPort != nil {
-		return int(*s.Cluster.Spec.ClusterNetwork.APIServerPort)
+	if s.Cluster.Spec.ClusterNetwork.APIServerPort != 0 {
+		return int(s.Cluster.Spec.ClusterNetwork.APIServerPort)
 	}
 	return 6443
 }
@@ -146,11 +145,11 @@ func (s *ClusterScope) GetDNSName() string {
 	return dnsName
 }
 
-// GetActiveMaasMachines all MaaS machines NOT being deleted
-func (s *ClusterScope) GetClusterMaasMachines() ([]*infrav1beta1.MaasMachine, error) {
+// GetClusterMaasMachines returns all MaaS machines in the cluster.
+func (s *ClusterScope) GetClusterMaasMachines() ([]*infrav1beta2.MaasMachine, error) {
 
-	machineList := &infrav1beta1.MaasMachineList{}
-	labels := map[string]string{clusterv1.ClusterNameLabel: s.Cluster.Name}
+	machineList := &infrav1beta2.MaasMachineList{}
+	labels := map[string]string{clusterv1beta2.ClusterNameLabel: s.Cluster.Name}
 
 	if err := s.client.List(
 		context.TODO(),
@@ -160,7 +159,7 @@ func (s *ClusterScope) GetClusterMaasMachines() ([]*infrav1beta1.MaasMachine, er
 		return nil, errors.Wrap(err, "failed to list machines")
 	}
 
-	var machines []*infrav1beta1.MaasMachine
+	var machines []*infrav1beta2.MaasMachine
 	for i := range machineList.Items {
 		m := &machineList.Items[i]
 		machines = append(machines, m)
@@ -180,7 +179,7 @@ var (
 )
 
 func (s *ClusterScope) ReconcileMaasClusterWhenAPIServerIsOnline() {
-	if s.Cluster.Status.ControlPlaneReady {
+	if s.Cluster.Status.ControlPlane != nil && s.Cluster.Status.ControlPlane.ReadyReplicas != nil && *s.Cluster.Status.ControlPlane.ReadyReplicas > 0 {
 		s.Info("skipping reconcile when API server is online",
 			"reason", "ControlPlaneReady")
 		return
@@ -226,7 +225,7 @@ func (s *ClusterScope) IsAPIServerOnline() (bool, error) {
 
 	ctx := context.TODO()
 
-	cluster := &clusterv1.Cluster{}
+	cluster := &clusterv1beta2.Cluster{}
 	if err := s.client.Get(ctx, util.ObjectKey(s.Cluster), cluster); err != nil {
 		return false, err
 	} else if !cluster.DeletionTimestamp.IsZero() {
@@ -234,7 +233,7 @@ func (s *ClusterScope) IsAPIServerOnline() (bool, error) {
 		return false, errors.New("Cluster is deleting; abort IsAPIServerOnline")
 	}
 
-	remoteClient, err := s.tracker.GetClient(ctx, util.ObjectKey(s.Cluster))
+	remoteClient, err := s.clusterCache.GetClient(ctx, util.ObjectKey(s.Cluster))
 	if err != nil {
 		s.V(2).Info("Waiting for online server to come online")
 		return false, nil
