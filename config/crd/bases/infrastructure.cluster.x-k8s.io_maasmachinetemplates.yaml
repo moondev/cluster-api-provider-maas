@@ -136,6 +136,9 @@ spec:
                     description: MaasMachineSpec defines the desired state of MaasMachine
                     properties:
                       ephemeral:
+                        description: |-
+                          Ephemeral enables in-memory (ephemeral) deploy for this machine when true.
+                          See https://github.com/spectrocloud/maas-client-go/releases (v0.1.2-beta1+).
                         type: boolean
                       failureDomain:
                         type: string
