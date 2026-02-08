@@ -50,6 +50,10 @@ spec:
                     description: Spec is the specification of the desired behavior
                       of the machine.
                     properties:
+                      ephemeral:
+                        description: Ephemeral, if true, deploys the machine in memory
+                          instead of disk
+                        type: boolean
                       failureDomain:
                         description: |-
                           FailureDomain is the failure domain the machine will be created in.
@@ -59,6 +63,10 @@ spec:
                         description: Image will be the MaaS image id
                         minLength: 1
                         type: string
+                      inMemory:
+                        description: InMemory, if true, deploys the machine in memory
+                          instead of disk
+                        type: boolean
                       minCPU:
                         description: MinCPU minimum number of CPUs
                         minimum: 0

@@ -3,17 +3,16 @@ package dns
 import (
 	"context"
 
-
-	"github.com/canonical/gomaasclient/client"
+	infra "github.com/moondev/cluster-api-provider-maas/api/v1beta1"
+	"github.com/moondev/cluster-api-provider-maas/pkg/maas/scope"
 	"github.com/pkg/errors"
-	infrainfrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
-	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
+	"github.com/spectrocloud/maas-client-go/maasclient"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 type Service struct {
 	scope      *scope.ClusterScope
-	maasClient client.ClientSetInterface
+	maasClient maasclient.ClientSetInterface
 }
 
 var ErrNotFound = errors.New("resource not found")
@@ -71,25 +70,8 @@ func (s *Service) UpdateDNSAttachments(IPs []string) error {
 	return nil
 }
 
-// TODO do at some point
-//func MachineIsRunning(m *infrainfrav1beta1.MaasMachine) bool {
-//	if !m.Status.MachinePowered {
-//		return false
-//	}
-//
-//	//allMachinePodConditions := []clusterv1.ConditionType{
-//	//	controlplanev1.MachineAPIServerPodHealthyCondition,
-//	//	controlplanev1.MachineControllerManagerPodHealthyCondition,
-//	//	controlplanev1.MachineSchedulerPodHealthyCondition,
-//	//}
-//	//if controlPlane.IsEtcdManaged() {
-//	//	allMachinePodConditions = append(allMachinePodConditions, controlplanev1.MachineEtcdPodHealthyCondition)
-//	//}
-//
-//}
-
 // InstanceIsRegisteredWithAPIServerELB returns true if the instance is already registered with the APIServer ELB.
-func (s *Service) MachineIsRegisteredWithAPIServerDNS(i *infrainfrav1beta1.Machine) (bool, error) {
+func (s *Service) MachineIsRegisteredWithAPIServerDNS(i *infra.Machine) (bool, error) {
 	ips, err := s.GetAPIServerDNSRecords()
 	if err != nil {
 		return false, err
@@ -120,7 +102,7 @@ func (s *Service) GetAPIServerDNSRecords() (sets.String, error) {
 	return ips, nil
 }
 
-func (s *Service) GetDNSResource() (client.DNSResource, error) {
+func (s *Service) GetDNSResource() (maasclient.DNSResource, error) {
 	dnsName := s.scope.GetDNSName()
 	if dnsName == "" {
 		return nil, errors.New("No DNS on the cluster set!")
@@ -128,7 +110,7 @@ func (s *Service) GetDNSResource() (client.DNSResource, error) {
 
 	d, err := s.maasClient.DNSResources().
 		List(context.Background(),
-			client.ParamsBuilder().Set(client.FQDNKey, dnsName))
+			maasclient.ParamsBuilder().Set(maasclient.FQDNKey, dnsName))
 	if err != nil {
 		return nil, errors.Wrapf(err, "error retrieving dns resources %q", dnsName)
 	} else if len(d) > 1 {

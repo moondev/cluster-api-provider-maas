@@ -1,8 +1,6 @@
 module github.com/moondev/cluster-api-provider-maas
 
-go 1.23.0
-
-toolchain go1.23.6
+go 1.24
 
 require (
 	github.com/canonical/gomaasclient v0.15.0
@@ -26,8 +24,8 @@ require (
 )
 
 require (
-	github.com/canonical/gomaasclient v0.15.0
-	github.com/spectrocloud/maas-client-go v0.0.2-beta
+	github.com/spectrocloud/cluster-api-provider-maas v1.9.4
+	github.com/spectrocloud/maas-client-go v0.1.2-beta1
 )
 
 require (

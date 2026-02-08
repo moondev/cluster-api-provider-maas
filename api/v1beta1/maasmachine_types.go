@@ -67,6 +67,10 @@ type MaasMachineSpec struct {
 	// Ephemeral, if true, deploys the machine in memory instead of disk
 	// +optional
 	Ephemeral bool `json:"ephemeral,omitempty"`
+
+	// InMemory, if true, deploys the machine in memory instead of disk
+	// +optional
+	InMemory *bool `json:"inMemory,omitempty"`
 }
 
 // MaasMachineStatus defines the observed state of MaasMachine
