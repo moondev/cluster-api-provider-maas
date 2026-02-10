@@ -2,17 +2,24 @@
 interpreter: bash -c
 tasks:
   tag:
+    args:
+      tag:
+        usage: tag name v0.6.4
     run:
       - set-environment:
           IMAGE_NAME: cluster-api-provider-maas-controller
           REGISTRY: docker.io/chadmoon
-          IMG_TAG: v0.6.4
+          IMG_TAG: ${tag}
           RELEASE_REGISTRY: ${REGISTRY}
       - rm -rf _build
       - make docker-build
       - make manifests
       - make dev-manifests
       - make release-manifests
+      - git tag ${tag}
+      - git tag
+      - git push origin ${tag}
+      - docker push docker.io/moondev/cluster-api-provider-maas-controller:${tag}-amd64
   up:
     run:
     - |
