@@ -115,13 +115,8 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 		SetUserData(userDataB64).
 		SetDistroSeries(mm.Spec.Image)
 
-	// Add ephemeral deployment if specified
+	// Add ephemeral (in-memory) deployment if specified
 	if mm.Spec.Ephemeral {
-		deployer = deployer.SetEphemeralDeploy(true)
-	}
-
-	// Use SetEphemeralDeploy for InMemory as well
-	if mm.Spec.InMemory != nil && *mm.Spec.InMemory {
 		deployer = deployer.SetEphemeralDeploy(true)
 	}
 

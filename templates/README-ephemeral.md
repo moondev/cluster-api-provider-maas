@@ -129,39 +129,52 @@ spec:
       ephemeral: false  # Workers on disk (default)
 ```
 
+### ClusterClass: in-memory via cluster variable
+
+The example ClusterClass in `clusterclass-maas.yaml` supports in-memory deployment via the variable `EPHEMERAL_DEPLOY`. When creating a Cluster from this ClusterClass, set the variable to enable ephemeral deployment for both control plane and worker machines:
+
+```yaml
+spec:
+  topology:
+    class: maas-clusterclass
+    version: "v1.28.0"
+    variables:
+      - name: EPHEMERAL_DEPLOY
+        value: true
+    controlPlane:
+      metadata: {}
+    workers:
+      machineDeployments:
+        - class: default-worker
+          name: md-0
+          replicas: 2
+```
+
+The ClusterClass defines `EPHEMERAL_DEPLOY` (type boolean, default `false`) and uses JSON patches to set `spec.template.spec.ephemeral` on the MaasMachineTemplates from this variable. Omit the variable or set `value: false` for disk-based deployment.
+
 ## Technical Details
 
 ### Implementation
 
 The ephemeral deployment feature is implemented in the machine service:
 
-1. **API Level**: The `ephemeral` field is added to `MaasMachineSpec`
-2. **Deployment Logic**: When `ephemeral: true`, the deployment parameters include `ephemeral_deploy: true`
-3. **MAAS Integration**: Uses the canonical MAAS client's `MachineDeployParams.EphemeralDeploy` field
-
-### Client Migration
-
-The implementation uses a hybrid approach:
-
-- **Machine Service**: Uses the canonical MAAS client (`github.com/canonical/gomaasclient`) for machine operations
-- **DNS Service**: Uses the spectrocloud MAAS client for DNS operations (maintains compatibility)
-- **Scope**: Provides both client types through separate functions
+1. **API Level**: The `ephemeral` field on `MaasMachineSpec` (and on `MaasMachineTemplate.spec.template.spec`) controls in-memory deployment.
+2. **Deployment Logic**: When `ephemeral: true`, the Spectro MAAS client's deployer is called with `SetEphemeralDeploy(true)`.
+3. **MAAS Integration**: Uses the Spectro MAAS client (`github.com/spectrocloud/maas-client-go`) for machine and DNS operations.
 
 ### Code Example
 
 ```go
-// Deploy the machine with ephemeral support
-deployParams := &entity.MachineDeployParams{
-    UserData:     userDataB64,
-    DistroSeries: mm.Spec.Image,
-}
+// Deploy the machine with ephemeral (in-memory) support
+deployer := m.Deployer().
+    SetUserData(userDataB64).
+    SetDistroSeries(mm.Spec.Image)
 
-// Add ephemeral deployment if specified
 if mm.Spec.Ephemeral {
-    deployParams.EphemeralDeploy = true
+    deployer = deployer.SetEphemeralDeploy(true)
 }
 
-deployingM, err := s.maasClient.Machine.Deploy(m.SystemID, deployParams)
+deployingM, err := deployer.Deploy(context.TODO())
 ```
 
 ## Use Cases
@@ -216,15 +229,6 @@ spec:
 2. **Data Management**: Don't use ephemeral deployment for persistent workloads
 3. **Monitoring**: Monitor memory usage of ephemeral machines
 4. **Backup Strategy**: Implement appropriate backup strategies for non-ephemeral components
-
-=======
-  name: "${CLUSTER_NAME}-control-plane"
-spec:
-  template:
-    spec:
-      # ... other configuration ...
-      ephemeral: true  # Enable ephemeral deployment
-```
 
 ### 2. Deploying with clusterctl
 
@@ -406,11 +410,6 @@ Planned improvements for the ephemeral deployment feature:
 2. **Hybrid Deployments**: Mix of ephemeral and disk-based machines
 3. **Auto-scaling**: Automatic ephemeral deployment for scaling events
 4. **Monitoring**: Enhanced monitoring for ephemeral machines
-5. **Persistence Options**: Configurable persistence levels 
-=======
-1. **Insufficient Memory**: Ensure machines have enough RAM for ephemeral deployment
-2. **MAAS Configuration**: Verify that your MAAS instance supports ephemeral deployment
-3. **Image Compatibility**: Some images may not work well with ephemeral deployment
 
 ### Verification
 

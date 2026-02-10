@@ -1,4 +1,4 @@
-# Example ClusterClass for MAAS
+# Example ClusterClass for MAAS with optional in-memory (ephemeral) deployment via cluster variable.
 apiVersion: cluster.x-k8s.io/v1beta1
 kind: ClusterClass
 metadata:
@@ -33,6 +33,40 @@ spec:
               apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
               kind: MaasMachineTemplate
               name: maas-worker-machinetemplate
+  variables:
+    - name: EPHEMERAL_DEPLOY
+      schema:
+        openAPIV3Schema:
+          type: boolean
+          default: false
+          description: If true, deploy machines in memory instead of disk (ephemeral).
+  patches:
+    - name: ephemeralControlPlane
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            kind: MaasMachineTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/ephemeral
+              valueFrom:
+                variable: EPHEMERAL_DEPLOY
+    - name: ephemeralWorkers
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            kind: MaasMachineTemplate
+            matchResources:
+              machineDeploymentClass:
+                names:
+                  - default-worker
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/ephemeral
+              valueFrom:
+                variable: EPHEMERAL_DEPLOY
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: MaasClusterTemplate
@@ -95,6 +129,7 @@ spec:
     spec:
       # ... (copy from your existing worker bootstrap config)
 ---
+# Example Cluster using the ClusterClass with in-memory deployment enabled via variable.
 apiVersion: cluster.x-k8s.io/v1beta1
 kind: Cluster
 metadata:
@@ -105,6 +140,9 @@ spec:
   topology:
     class: maas-clusterclass
     version: "${KUBERNETES_VERSION}"
+    variables:
+      - name: EPHEMERAL_DEPLOY
+        value: true
     controlPlane:
       metadata: {}
     workers:

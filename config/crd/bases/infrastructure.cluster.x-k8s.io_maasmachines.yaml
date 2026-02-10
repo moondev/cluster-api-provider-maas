@@ -42,8 +42,7 @@ spec:
             description: MaasMachineSpec defines the desired state of MaasMachine
             properties:
               ephemeral:
-                description: Ephemeral, if true, deploys the machine in memory instead
-                  of disk
+                description: Ephemeral, if true, deploys the machine in memory instead of disk.
                 type: boolean
               failureDomain:
                 description: |-
@@ -54,10 +53,6 @@ spec:
                 description: Image will be the MaaS image id
                 minLength: 1
                 type: string
-              inMemory:
-                description: InMemory, if true, deploys the machine in memory instead
-                  of disk
-                type: boolean
               minCPU:
                 description: MinCPU minimum number of CPUs
                 minimum: 0

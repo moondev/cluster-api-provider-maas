@@ -1,4 +1,4 @@
-# Creates a cluster with one control-plane node and one worker node
+# Creates a cluster with one control-plane node and one worker node (in-memory deployment via ephemeral: true).
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: MaasCluster
 metadata:
@@ -40,7 +40,8 @@ spec:
       image: ${CONTROL_PLANE_MACHINE_IMAGE}
       resourcePool: ${CONTROL_PLANE_MACHINE_RESOURCEPOOL}
       tags: [ ${ CONTROL_PLANE_MACHINE_TAG } ]
-      inMemory: true
+      # In-memory deployment (same as ephemeral)
+      ephemeral: true
 ---
 apiVersion: controlplane.cluster.x-k8s.io/v1beta1
 kind: KubeadmControlPlane
@@ -116,7 +117,8 @@ spec:
       image: ${WORKER_MACHINE_IMAGE}
       resourcePool: ${WORKER_MACHINE_RESOURCEPOOL}
       tags: [ ${ WORKER_MACHINE_TAG } ]
-      inMemory: true
+      # In-memory deployment (same as ephemeral)
+      ephemeral: true
 ---
 apiVersion: cluster.x-k8s.io/v1beta1
 kind: MachineDeployment
