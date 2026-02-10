@@ -1,0 +1,35 @@
+---
+interpreter: bash -c
+tasks:
+  tag:
+    run:
+      - set-environment:
+          IMAGE_NAME: cluster-api-provider-maas-controller
+          REGISTRY: docker.io/chadmoon
+          IMG_TAG: v0.6.4
+          RELEASE_REGISTRY: ${REGISTRY}
+      - rm -rf _build
+      - make docker-build
+      - make manifests
+      - make dev-manifests
+      - make release-manifests
+  up:
+    run:
+    - |
+        multipass exec maas -- sudo bash <<-------
+        set -x
+        # kubectl get pods -A
+        # kubectl get clusters,machines -A
+        # kubectl get clusters -A -o yaml | kubectl delete -f -
+        kind delete cluster
+        ------
+
+    - |
+        multipass exec maas -- sudo bash <<-------
+        set -x
+        # kubectl get pods -A
+        # kubectl get clusters,machines -A
+        # kubectl get clusters -A -o yaml | kubectl delete -f -
+        kind create cluster --wait 60s -v=9
+
+        ------

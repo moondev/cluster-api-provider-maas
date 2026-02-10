@@ -192,7 +192,7 @@ func (t *TestEnvironmentConfiguration) Build() (*TestEnvironment, error) {
 	}
 
 	if _, err := t.env.Start(); err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	options := manager.Options{

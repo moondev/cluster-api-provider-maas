@@ -51,7 +51,8 @@ spec:
                       of the machine.
                     properties:
                       ephemeral:
-                        description: Ephemeral, if true, deploys the machine in memory instead of disk.
+                        description: Ephemeral, if true, deploys the machine in memory
+                          instead of disk.
                         type: boolean
                       failureDomain:
                         description: |-
